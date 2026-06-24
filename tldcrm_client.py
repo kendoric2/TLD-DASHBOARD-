@@ -1,7 +1,7 @@
 """
 TLDCRM read-only API client (the "egress" layer).
 
-PULL ONLY: queries are sent as POST requests with a JSON body to
+PULL ONLY: queries are sent as GET requests with a JSON body to
 /api/egress/* endpoints to READ data. Nothing is ever written back.
 
 Query shapes live in egress_payloads.json. Date filtering uses TLD's explicit
@@ -16,6 +16,7 @@ import os
 import json
 import datetime
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 API_ID_HEADER = "tld-api-id"
 API_KEY_HEADER = "tld-api-key"
@@ -83,7 +84,8 @@ class TLDCRMClient:
     def run(self, query_name, start=None, end=None):
         endpoint, body = self._payload(query_name, start, end)
         url = f"{self.base_url}/api/egress/{endpoint.lstrip('/')}"
-        resp = self.session.post(url, json=body, timeout=self.timeout)
+        # GET with a JSON body — egress is read-only and the API key allows GET.
+        resp = self.session.request("GET", url, json=body, timeout=self.timeout)
         resp.raise_for_status()
         return self._rows(resp.json())
 
@@ -128,8 +130,33 @@ class TLDCRMClient:
     def build_dashboard(self, range_key, range_label):
         start, end = date_range_for(range_key)
 
-        policies = _first_num(self.run("policies_count", start, end))
-        leads = _first_num(self.run("billable_leads_count", start, end))
+        # All queries are independent and filtered server-side, so run them
+        # concurrently — the dashboard loads in ~one round-trip instead of seven.
+        jobs = {
+            "policies":   lambda: _first_num(self.run("policies_count", start, end)),
+            "leads":      lambda: _first_num(self.run("billable_leads_count", start, end)),
+            "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
+            "by_carrier": lambda: self._grouped("policies_by_carrier", start, end),
+            "by_plan":    lambda: self._grouped("policies_by_plan", start, end),
+            "recent":     lambda: self.run("recent_sales"),
+            "agents":     lambda: self.agent_performance(start, end),
+        }
+        results, errors = {}, []
+
+        def _run(key, fn):
+            try:
+                return key, fn()
+            except Exception as e:
+                errors.append(f"{key}: {e}")
+                return key, None
+
+        with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+            for fut in as_completed([pool.submit(_run, k, fn) for k, fn in jobs.items()]):
+                k, v = fut.result()
+                results[k] = v
+
+        policies = results.get("policies") or 0
+        leads = results.get("leads") or 0
         conv = round(policies / leads * 100, 1) if leads else 0.0
 
         recent = [{
@@ -139,9 +166,9 @@ class TLDCRMClient:
             "carrier": r.get("carrier_name") or r.get("carrier"),
             "premium": r.get("premium"),
             "status": r.get("status"),
-        } for r in self.run("recent_sales")]
+        } for r in (results.get("recent") or [])]
 
-        return {
+        data = {
             "demo": False,
             "range_label": range_label,
             "date_range": {"start": start, "end": end},
@@ -149,13 +176,16 @@ class TLDCRMClient:
                 "policies_sold": policies,
                 "billable_leads": leads,
                 "conversion_rate": conv,
-                "avg_gtl_premium": _first_num(self.run("avg_gtl_premium", start, end)),
+                "avg_gtl_premium": results.get("avg_gtl") or 0,
             },
-            "by_carrier": self._grouped("policies_by_carrier", start, end),
-            "by_plan": self._grouped("policies_by_plan", start, end),
+            "by_carrier": results.get("by_carrier") or [],
+            "by_plan": results.get("by_plan") or [],
             "recent_sales": recent,
-            "agents": self.agent_performance(start, end),
+            "agents": results.get("agents") or [],
         }
+        if errors:
+            data["error"] = "Some metrics didn't load: " + "; ".join(errors)
+        return data
 
 
 def _num(v):

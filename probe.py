@@ -32,9 +32,9 @@ print(f"\nThis month: {s} .. {e}   (sent as {t._us(s)} .. {t._us(e)})")
 # --- RAW POST for the policies count, so we see the filtered envelope ---
 endpoint, body = c._payload("policies_count", s, e)
 url = f"{base.rstrip('/')}/api/egress/{endpoint}"
-print(f"\n=== RAW POST /api/egress/{endpoint} ===")
+print(f"\n=== RAW GET /api/egress/{endpoint} (JSON body) ===")
 print("body:", json.dumps(body))
-r = c.session.post(url, json=body, timeout=30)
+r = c.session.request("GET", url, json=body, timeout=30)
 print("HTTP", r.status_code)
 print(r.text[:1400])
 
