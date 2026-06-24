@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+
+# Local data / probe output (may contain customer PII) — never commit
+policy_*.txt
+*.local.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+*.log

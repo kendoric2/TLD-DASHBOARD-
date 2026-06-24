@@ -1,0 +1,98 @@
+/* ============================================================
+   THEME — swap these to your exact brand colors when confirmed
+   ============================================================ */
+:root{
+  --brand:#0B6FB8;          /* primary blue */
+  --brand-dark:#0A2540;     /* deep navy (headers/text) */
+  --brand-2:#17A2B8;        /* teal accent */
+  --good:#2BB673;           /* positive / up */
+  --warn:#F5A623;           /* attention */
+  --bad:#E2574C;            /* negative / down */
+  --bg:#EEF3F8;             /* page background */
+  --card:#FFFFFF;           /* card surface */
+  --line:#E3EAF2;           /* borders */
+  --text:#102A43;           /* body text */
+  --muted:#6B7C93;          /* secondary text */
+  --radius:14px;
+  --shadow:0 1px 3px rgba(16,42,67,.06), 0 6px 18px rgba(16,42,67,.06);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Header */
+header{
+  background:linear-gradient(120deg,var(--brand-dark),var(--brand));
+  color:#fff; padding:18px 28px; display:flex; align-items:center;
+  justify-content:space-between; flex-wrap:wrap; gap:14px;
+}
+.brand{display:flex; align-items:center; gap:12px}
+.logo-mark{
+  width:40px;height:40px;border-radius:10px;background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--brand);font-weight:800;font-size:20px;letter-spacing:-1px;
+}
+.brand h1{font-size:18px;margin:0;font-weight:700;line-height:1.1}
+.brand p{margin:2px 0 0;font-size:12px;opacity:.8}
+.header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.range,.btn{
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);
+  color:#fff;border-radius:9px;padding:8px 12px;font-size:13px;cursor:pointer;
+}
+.btn:hover{background:rgba(255,255,255,.24)}
+.range:focus,.btn:focus{outline:2px solid #fff}
+.updated{font-size:12px;opacity:.85;text-align:right}
+.badge-sample{
+  background:var(--warn);color:#3a2a00;font-weight:700;font-size:11px;
+  padding:4px 9px;border-radius:20px;letter-spacing:.3px;
+}
+
+/* Layout */
+main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
+.section-title{font-size:13px;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--muted);font-weight:700;margin:26px 4px 12px}
+.section-title .hint{text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted);opacity:.8}
+.errbar{background:#FDECEA;border:1px solid #F5C6C2;color:#A33;padding:10px 14px;
+  border-radius:10px;font-size:13px;margin-bottom:14px}
+
+/* KPI cards */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px 18px;box-shadow:var(--shadow)}
+.kpi .label{font-size:12px;color:var(--muted);font-weight:600}
+.kpi .value{font-size:26px;font-weight:800;color:var(--brand-dark);margin:6px 0 4px;letter-spacing:-.5px}
+.kpi .delta{font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:4px;min-height:16px}
+.delta.up{color:var(--good)} .delta.down{color:var(--bad)} .delta.note{color:var(--muted);font-weight:600}
+
+/* Charts + tables */
+.grid-2b{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px;box-shadow:var(--shadow)}
+.card h3{margin:0 0 14px;font-size:15px;color:var(--brand-dark)}
+.chart-wrap{position:relative;height:260px}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line)}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;user-select:none}
+th[data-sort]{cursor:pointer}
+th[data-sort]:hover{color:var(--brand)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr:hover{background:#F7FAFD}
+.rank{display:inline-flex;width:22px;height:22px;border-radius:50%;
+  background:var(--bg);color:var(--brand-dark);font-weight:700;font-size:12px;
+  align-items:center;justify-content:center;margin-right:8px}
+.rank.top{background:var(--brand);color:#fff}
+.bar-cell{display:flex;align-items:center;gap:8px}
+.bar-track{flex:1;height:7px;background:var(--bg);border-radius:6px;overflow:hidden;min-width:60px}
+.bar-fill{height:100%;background:var(--brand-2);border-radius:6px}
+.pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:capitalize}
+.pill.issued{background:#E5F6EE;color:#1B7A4B}
+.pill.pending{background:#FEF3DC;color:#8A5A00}
+.pill.submitted{background:#E7F0FB;color:#1C5A99}
+.dash{color:var(--muted)}
+
+footer{max-width:1280px;margin:0 auto;padding:18px 28px 40px;color:var(--muted);font-size:12px}
+@media(max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}.grid-2b{grid-template-columns:1fr}}

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>iHealth Plans — CRM Dashboard</title>
+<link rel="stylesheet" href="/static/dashboard.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo-mark">iH</div>
+    <div>
+      <h1>iHealth Plans</h1>
+      <p>Sales &amp; Agent Performance Dashboard</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="badge-sample" id="demoBadge" hidden>SAMPLE DATA</span>
+    <select class="range" id="range">
+      <option value="today">Today</option>
+      <option value="this_week">This Week</option>
+      <option value="this_month" selected>This Month</option>
+      <option value="last_month">Last Month</option>
+      <option value="this_quarter">This Quarter</option>
+    </select>
+    <button class="btn" id="refresh">&#8635; Refresh</button>
+    <div class="updated">Last updated<br/><b id="updated">—</b></div>
+  </div>
+</header>
+
+<main>
+  <div id="errbar" class="errbar" hidden></div>
+
+  <div class="section-title">Key numbers · <span class="rangeLabel">This Month</span></div>
+  <div class="kpis" id="kpis"></div>
+
+  <div class="section-title">Sales &amp; Policies</div>
+  <div class="grid-2b">
+    <div class="card"><h3>Policies by Carrier</h3><div class="chart-wrap"><canvas id="carrier"></canvas></div></div>
+    <div class="card"><h3>Policies by Plan Type</h3><div class="chart-wrap"><canvas id="product"></canvas></div></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Recent Sales</h3>
+    <table>
+      <thead><tr><th>Date</th><th>Agent</th><th>Plan</th><th>Carrier</th><th class="num">Premium</th><th>Status</th></tr></thead>
+      <tbody id="recent"></tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Agent Performance · <span class="rangeLabel">This Month</span>
+    <span class="hint">— click a column to sort</span>
+  </div>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th data-sort="name">Agent</th>
+          <th class="num" data-sort="calls">Calls</th>
+          <th class="num" data-sort="talk">Talk Time</th>
+          <th class="num" data-sort="policies">Policies Sold</th>
+          <th data-sort="conversion">Conversion</th>
+        </tr>
+      </thead>
+      <tbody id="agents"></tbody>
+    </table>
+  </div>
+</main>
+
+<footer id="footer">Loading…</footer>
+
+<script src="/static/dashboard.js"></script>
+</body>
+</html>
