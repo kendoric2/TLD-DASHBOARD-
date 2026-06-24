@@ -29,12 +29,13 @@ Quarter) into concrete dates before each request.
 ## Run it
 
 ```bash
-cd ihealth-dashboard
+cd TLDDASHBOARD
 pip install -r requirements.txt
-python app.py
+python3 app.py
 ```
 
-Then open **http://localhost:5000** in your browser.
+It opens **http://localhost:5050** in your browser automatically. (macOS reserves
+port 5000 for AirPlay Receiver, so the app uses 5050 — set `PORT=...` to change it.)
 
 Out of the box it runs in **demo mode** with sample data (you'll see a
 "SAMPLE DATA" badge), so you can use it before any keys are added.
@@ -50,8 +51,8 @@ Out of the box it runs in **demo mode** with sample data (you'll see a
    ```
    In TLD, create an API key **restricted to the egress (read) endpoints** — it
    then physically cannot write anything.
-3. Restart `python app.py`. The badge disappears and real numbers load.
-4. Visit `http://localhost:5000/health` to confirm `"live": true`.
+3. Restart `python3 app.py`. The badge disappears and real numbers load.
+4. Visit `http://localhost:5050/health` to confirm `"live": true`.
 
 ## What's on the dashboard
 

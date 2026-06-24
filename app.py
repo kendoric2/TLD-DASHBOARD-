@@ -19,6 +19,8 @@ Runs in DEMO mode (sample data) until TLD credentials are filled into .env.
 """
 
 import os
+import threading
+import webbrowser
 from flask import Flask, jsonify, render_template, request
 
 try:
@@ -95,5 +97,12 @@ def health():
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "5000"))
+    # Default to 5050 — macOS uses port 5000 for AirPlay Receiver, which serves
+    # a 403 "Access denied" page. Override anytime with: PORT=8000 python3 app.py
+    port = int(os.getenv("PORT", "5050"))
+    url = f"http://localhost:{port}"
+    print(f"\n  iHealth Plans dashboard  ->  {url}\n  (press CTRL+C to stop)\n")
+    # Pop the browser open once the server is up (set NO_BROWSER=1 to disable).
+    if not os.getenv("NO_BROWSER"):
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     app.run(host="127.0.0.1", port=port, debug=False)
