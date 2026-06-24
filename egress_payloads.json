@@ -1,127 +1,58 @@
 {
   "_meta": {
-    "description": "Request payload templates for TLDCRM read-only egress queries used by the dashboard. PULL ONLY (GET /api/egress/*). Nothing is ever written back.",
-    "date_range_rule": "TLD requires date-bounded egress to use a start_date + end_date range (YYYY-MM-DD) in the payload, NOT relative labels. The Python client fills the {{start_date}} and {{end_date}} placeholders from the range the user selects.",
-    "endpoint_default_date_column": {
-      "policies": "date_sold",
-      "leads": "date_created",
-      "tldialer/report_agentcpa": "call date"
-    },
-    "placeholders": {
-      "{{start_date}}": "inclusive range start, YYYY-MM-DD",
-      "{{end_date}}": "inclusive range end, YYYY-MM-DD"
-    }
+    "description": "JSON request bodies for TLDCRM read-only egress queries. Sent as POST with Content-Type: application/json. PULL ONLY — nothing is written back.",
+    "date_rule": "Date filtering = set the date column to a TLD relative label in the body, e.g. {\"date_sold\": \"This Month\"}. The client injects <date_field> = <label> for date_bounded queries.",
+    "notes": "columns is a JSON array; sort direction is 'sort' (ASC|DESC). Matches the working payload shape from TLD."
   },
-
   "queries": {
     "policies_count": {
       "endpoint": "policies",
-      "method": "GET",
       "date_bounded": true,
-      "payload": {
-        "start_date": "{{start_date}}",
-        "end_date": "{{end_date}}",
-        "aggregates": true,
-        "aggregate": true,
-        "columns": "tql_cnt_policy_id"
-      }
+      "date_field": "date_sold",
+      "payload": { "aggregates": true, "aggregate": true, "columns": ["tql_cnt_policy_id"] }
     },
 
     "billable_leads_count": {
       "endpoint": "leads",
-      "method": "GET",
       "date_bounded": true,
-      "payload": {
-        "start_date": "{{start_date}}",
-        "end_date": "{{end_date}}",
-        "billable": 1,
-        "aggregates": true,
-        "aggregate": true,
-        "columns": "tql_cnt_lead_id"
-      }
+      "date_field": "date_created",
+      "payload": { "billable": 1, "aggregates": true, "aggregate": true, "columns": ["tql_cnt_lead_id"] }
     },
 
     "avg_gtl_premium": {
       "endpoint": "policies",
-      "method": "GET",
       "date_bounded": true,
-      "payload": {
-        "start_date": "{{start_date}}",
-        "end_date": "{{end_date}}",
-        "carrier": "Guarantee Trust Life",
-        "aggregates": true,
-        "aggregate": true,
-        "columns": "tql_avg_premium"
-      }
+      "date_field": "date_sold",
+      "payload": { "carrier": "GTL", "aggregates": true, "aggregate": true, "columns": ["tql_avg_premium"] }
     },
 
     "policies_by_carrier": {
       "endpoint": "policies",
-      "method": "GET",
       "date_bounded": true,
-      "label_field": "carrier",
-      "payload": {
-        "start_date": "{{start_date}}",
-        "end_date": "{{end_date}}",
-        "aggregates": true,
-        "group_by": "carrier",
-        "columns": "carrier,tql_cnt_policy_id",
-        "order_by": "tql_cnt_policy_id",
-        "order": "desc"
-      }
+      "date_field": "date_sold",
+      "label_field": "carrier_name",
+      "payload": { "aggregates": true, "group_by": "carrier_name", "columns": ["carrier_name", "tql_cnt_policy_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC" }
     },
 
     "policies_by_plan": {
       "endpoint": "policies",
-      "method": "GET",
       "date_bounded": true,
+      "date_field": "date_sold",
       "label_field": "product",
-      "payload": {
-        "start_date": "{{start_date}}",
-        "end_date": "{{end_date}}",
-        "aggregates": true,
-        "group_by": "product",
-        "columns": "product,tql_cnt_policy_id",
-        "order_by": "tql_cnt_policy_id",
-        "order": "desc"
-      }
+      "payload": { "aggregates": true, "group_by": "product", "columns": ["product", "tql_cnt_policy_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC" }
     },
 
     "recent_sales": {
       "endpoint": "policies",
-      "method": "GET",
       "date_bounded": false,
-      "payload": {
-        "columns": "date_sold,agent,product,carrier,premium,status",
-        "order_by": "date_sold",
-        "order": "desc",
-        "limit": 10
-      }
+      "payload": { "sold": 1, "columns": ["date_sold", "agent_name", "product", "carrier_name", "premium", "status"], "order_by": "date_sold", "sort": "DESC", "limit": 12 }
     },
 
     "agent_policies": {
       "endpoint": "policies",
-      "method": "GET",
       "date_bounded": true,
-      "payload": {
-        "start_date": "{{start_date}}",
-        "end_date": "{{end_date}}",
-        "aggregates": true,
-        "group_by": "agent",
-        "columns": "agent,tql_cnt_policy_id,tql_cnu_lead_id",
-        "order_by": "tql_cnt_policy_id",
-        "order": "desc"
-      }
-    },
-
-    "agent_calls": {
-      "endpoint": "tldialer/report_agentcpa",
-      "method": "GET",
-      "date_bounded": true,
-      "payload": {
-        "start_date": "{{start_date}}",
-        "end_date": "{{end_date}}"
-      }
+      "date_field": "date_sold",
+      "payload": { "aggregates": true, "group_by": "agent_name", "columns": ["agent_name", "tql_cnt_policy_id", "tql_cnu_lead_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC", "limit": 15 }
     }
   }
 }

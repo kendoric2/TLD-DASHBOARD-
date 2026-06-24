@@ -1,12 +1,12 @@
 """
-Quick LIVE connectivity + field check for TLDCRM (read-only).
+Live diagnostic for the TLDCRM dashboard (read-only, POST + JSON body).
 
-Run this on a machine that can reach your TLD instance (e.g. your Mac):
+Run on your Mac:
+    cd ~/Documents/TLDDASHBOARD
     python3 probe.py
 
-It hits a handful of egress endpoints and prints the raw responses so we can
-confirm the endpoints and column names are right before trusting the dashboard.
-Read-only: only GET requests, nothing is written back.
+Shows the RAW POST response for the policies count (so we confirm the date
+range actually filters), then runs each dashboard query. Read-only.
 """
 
 import os
@@ -17,26 +17,38 @@ load_dotenv()
 import tldcrm_client as t
 
 base = os.getenv("TLD_BASE_URL", "").strip()
-print("Base URL:", base or "(EMPTY - set TLD_BASE_URL in .env)")
-print("API ID  :", os.getenv("TLD_API_ID", "").strip() or "(empty)")
-print("API key :", "set" if os.getenv("TLD_API_KEY", "").strip() else "(empty)")
+hid = os.getenv("TLD_API_ID", "").strip()
+key = os.getenv("TLD_API_KEY", "").strip()
+print("Base URL:", base or "(EMPTY)")
+print("API ID  :", hid or "(empty)")
+print("API key :", "set" if key else "(empty)")
+if not (base and hid and key):
+    raise SystemExit("\nFill all three values in .env first.")
 
-if not (base and os.getenv("TLD_API_ID", "").strip() and os.getenv("TLD_API_KEY", "").strip()):
-    raise SystemExit("\nFill all three values in .env first, then re-run.")
-
-c = t.TLDCRMClient(base, os.getenv("TLD_API_ID"), os.getenv("TLD_API_KEY"), timeout=15)
+c = t.TLDCRMClient(base, hid, key, timeout=30)
 s, e = t.date_range_for("this_month")
-print(f"\nDate range: {s} -> {e}\n")
+print(f"\nThis month: {s} .. {e}   (sent as {t._us(s)} .. {t._us(e)})")
 
+# --- RAW POST for the policies count, so we see the filtered envelope ---
+endpoint, body = c._payload("policies_count", s, e)
+url = f"{base.rstrip('/')}/api/egress/{endpoint}"
+print(f"\n=== RAW POST /api/egress/{endpoint} ===")
+print("body:", json.dumps(body))
+r = c.session.post(url, json=body, timeout=30)
+print("HTTP", r.status_code)
+print(r.text[:1400])
+
+# --- Each dashboard query, parsed ---
+print("\n=== Parsed results per query ===")
 checks = ["policies_count", "billable_leads_count", "avg_gtl_premium",
-          "policies_by_carrier", "agent_policies", "recent_sales"]
-
+          "policies_by_carrier", "policies_by_plan", "agent_policies", "recent_sales"]
 for q in checks:
     try:
         rows = c.run(q) if q == "recent_sales" else c.run(q, s, e)
-        preview = rows[:2] if isinstance(rows, list) else rows
-        print(f"[OK]   {q}: {json.dumps(preview)[:320]}")
+        n = len(rows) if isinstance(rows, list) else "?"
+        print(f"\n[{q}] rows={n}")
+        print("  " + json.dumps(rows[:3])[:600])
     except Exception as ex:
-        print(f"[FAIL] {q}: {type(ex).__name__}: {str(ex)[:220]}")
+        print(f"\n[{q}] FAILED: {type(ex).__name__}: {str(ex)[:240]}")
 
-print("\nDone. Paste this output back and I'll fix any field names that are off.")
+print("\nDone. Paste this whole output back.")

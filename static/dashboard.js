@@ -89,32 +89,35 @@ function renderBar(id, rows) {
 }
 
 function renderRecent(rows) {
-  $("#recent").innerHTML = (rows || []).map(r => `
+  $("#recent").innerHTML = (rows || []).map(r => {
+    const date = r.date_sold ? String(r.date_sold).split(" ")[0] : "";
+    const prem = Number(r.premium) > 0
+      ? '$' + Number(r.premium).toLocaleString()
+      : '<span class="dash">—</span>';
+    return `
     <tr>
-      <td>${r.date_sold ?? ""}</td><td>${r.agent ?? ""}</td>
+      <td>${date}</td><td>${r.agent ?? ""}</td>
       <td>${r.product ?? ""}</td><td>${r.carrier ?? ""}</td>
-      <td class="num">${r.premium ? '$'+Number(r.premium).toLocaleString() : '<span class="dash">—</span>'}</td>
+      <td class="num">${prem}</td>
       <td><span class="pill ${String(r.status||'').toLowerCase()}">${r.status ?? ""}</span></td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
 }
 
 function renderAgents(rows) {
   rows = rows || [];
   const sorted = [...rows].sort((a,b) => {
     let x = a[sortKey], y = b[sortKey];
-    if (sortKey === "talk") { x = a.talk_time; y = b.talk_time; }
     if (typeof x === "string" || typeof y === "string")
       return sortDir * String(x ?? "").localeCompare(String(y ?? ""));
     return sortDir * ((x || 0) - (y || 0));
   });
-  const maxConv = Math.max(1, ...rows.map(a => a.conversion || 0));
+  const maxP = Math.max(1, ...rows.map(a => a.policies || 0));
   $("#agents").innerHTML = sorted.map((a,i) => `
     <tr>
       <td><span class="rank ${i===0?'top':''}">${i+1}</span>${a.name}</td>
-      <td class="num">${a.calls ?? '—'}</td>
-      <td class="num">${a.talk_time ?? '—'}</td>
-      <td class="num">${a.policies ?? 0}</td>
-      <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((a.conversion||0)/maxConv*100).toFixed(0)}%"></div></div><span>${a.conversion ?? 0}%</span></div></td>
+      <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((a.policies||0)/maxP*100).toFixed(0)}%"></div></div><span>${(a.policies||0).toLocaleString()}</span></div></td>
+      <td class="num">${(a.leads||0).toLocaleString()}</td>
     </tr>`).join("");
 }
 

@@ -1,0 +1,26 @@
+#!/bin/bash
+# iHealth Dashboard — app launcher (no Terminal window).
+# To stop the dashboard: right-click the app's icon in the Dock and choose Quit.
+
+PROJECT="$HOME/Documents/TLDDASHBOARD"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+if [ ! -d "$PROJECT" ]; then
+  osascript -e 'display alert "iHealth Dashboard" message "Could not find the project folder at ~/Documents/TLDDASHBOARD."'
+  exit 1
+fi
+cd "$PROJECT" || exit 1
+
+PY="$(command -v python3)"
+if [ -z "$PY" ]; then
+  osascript -e 'display alert "iHealth Dashboard" message "Python 3 was not found. Open Terminal, install Python 3, then try again."'
+  exit 1
+fi
+
+# First-run dependency install (silent; does nothing if already installed).
+"$PY" -m pip install -r requirements.txt --quiet 2>/dev/null \
+  || "$PY" -m pip install -r requirements.txt --quiet --break-system-packages 2>/dev/null
+
+# Launch the dashboard. app.py opens your browser at http://localhost:5050.
+# Because of 'exec', this app's process IS the server — quitting the app stops it.
+exec "$PY" app.py
