@@ -9,6 +9,8 @@ const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).tr
 let charts = {};          // keep chart instances so we can destroy before redraw
 let lastData = null;      // cache for client-side sorting
 let sortKey = "policies", sortDir = -1;
+let autoTimer = null;     // handle for the auto-refresh interval
+const AUTO_MS = 30000;    // auto-refresh every 30 seconds
 
 async function load() {
   const range = $("#range").value;
@@ -22,7 +24,17 @@ async function load() {
     $("#errbar").hidden = false;
     $("#errbar").textContent = "Could not reach the backend: " + e;
     $("#footer").textContent = "Offline.";
+  } finally {
+    armAuto();   // (re)start the 30s countdown if Auto is ticked
   }
+}
+
+/* Auto-refresh: while the box is ticked, reload every 30s. Re-arming on each
+   load means the gap is always 30s since the last refresh (manual or auto). */
+function armAuto() {
+  clearInterval(autoTimer);
+  autoTimer = null;
+  if ($("#autoRefresh").checked) autoTimer = setInterval(load, AUTO_MS);
 }
 
 function render(d) {
@@ -125,6 +137,7 @@ function renderAgents(rows) {
 /* ---- GUI events ---- */
 $("#range").addEventListener("change", load);
 $("#refresh").addEventListener("click", load);
+$("#autoRefresh").addEventListener("change", armAuto);
 document.querySelectorAll("th[data-sort]").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.getAttribute("data-sort");

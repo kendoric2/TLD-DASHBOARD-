@@ -45,6 +45,12 @@ header{
 .btn:hover{background:rgba(255,255,255,.24)}
 .range:focus,.btn:focus{outline:2px solid #fff}
 .updated{font-size:12px;opacity:.85;text-align:right}
+.auto{
+  display:flex;align-items:center;gap:6px;font-size:13px;color:#fff;
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);
+  border-radius:9px;padding:7px 11px;cursor:pointer;user-select:none;
+}
+.auto input{width:15px;height:15px;margin:0;cursor:pointer;accent-color:#fff}
 .badge-sample{
   background:var(--warn);color:#3a2a00;font-weight:700;font-size:11px;
   padding:4px 9px;border-radius:20px;letter-spacing:.3px;
