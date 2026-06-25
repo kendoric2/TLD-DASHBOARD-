@@ -1,17 +1,17 @@
 /* ============================================================
-   THEME — swap these to your exact brand colors when confirmed
+   THEME — iHealth Plans brand (deep navy + green)
    ============================================================ */
 :root{
-  --brand:#0B6FB8;          /* primary blue */
-  --brand-dark:#0A2540;     /* deep navy (headers/text) */
-  --brand-2:#17A2B8;        /* teal accent */
-  --good:#2BB673;           /* positive / up */
+  --brand:#1CA64C;          /* iHealth green — buttons, bars, accents */
+  --brand-dark:#1B2A52;     /* iHealth deep navy — header, headings, values */
+  --brand-2:#34A39B;        /* teal accent */
+  --good:#1CA64C;           /* positive / up (brand green) */
   --warn:#F5A623;           /* attention */
   --bad:#E2574C;            /* negative / down */
-  --bg:#EEF3F8;             /* page background */
+  --bg:#F2F5F8;             /* page background */
   --card:#FFFFFF;           /* card surface */
-  --line:#E3EAF2;           /* borders */
-  --text:#102A43;           /* body text */
+  --line:#E3E9F0;           /* borders */
+  --text:#1E2A44;           /* body text */
   --muted:#6B7C93;          /* secondary text */
   --radius:14px;
   --shadow:0 1px 3px rgba(16,42,67,.06), 0 6px 18px rgba(16,42,67,.06);
@@ -25,7 +25,8 @@ body{
 
 /* Header */
 header{
-  background:linear-gradient(120deg,var(--brand-dark),var(--brand));
+  background:var(--brand-dark);
+  border-bottom:3px solid var(--brand);   /* green accent line, like ihealthplans.com */
   color:#fff; padding:18px 28px; display:flex; align-items:center;
   justify-content:space-between; flex-wrap:wrap; gap:14px;
 }
@@ -97,7 +98,7 @@ tbody tr:hover{background:#F7FAFD}
 .pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:capitalize}
 .pill.issued{background:#E5F6EE;color:#1B7A4B}
 .pill.pending{background:#FEF3DC;color:#8A5A00}
-.pill.submitted{background:#E7F0FB;color:#1C5A99}
+.pill.submitted{background:#E8ECF5;color:#1B2A52}
 .dash{color:var(--muted)}
 
 footer{max-width:1280px;margin:0 auto;padding:18px 28px 40px;color:var(--muted);font-size:12px}

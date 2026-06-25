@@ -77,7 +77,7 @@ function renderKPIs(k) {
 
 function renderDoughnut(id, rows) {
   rows = rows || [];
-  const colors = [C('--brand'),C('--brand-2'),C('--good'),C('--warn'),'#8E7CC3','#B7C2D0','#9FB3C8'];
+  const colors = [C('--brand'),C('--brand-dark'),C('--brand-2'),C('--warn'),'#7E8AA8','#A9B7C9','#CDD8E6'];
   charts[id]?.destroy();
   charts[id] = new Chart(document.getElementById(id), {
     type:'doughnut',
