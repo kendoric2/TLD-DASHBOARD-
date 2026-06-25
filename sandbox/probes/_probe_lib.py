@@ -1,9 +1,9 @@
 """
 Shared helpers for the egress probes — read-only, HUMAN-READABLE output.
 
-Exposes: hr() section header, fmt() null-friendly value, cols_of(),
-show_columns(), show_rows() (aligned field: value), pull() (fetch a sample),
-and survey() (columns + join keys + sample + date-filter, all readable).
+Exposes: hr() header, fmt() null-friendly value, cols_of(), show_columns(),
+as_rows() (normalize ANY response -> rows + totals), show_rows() (aligned
+field: value, never a raw dump), pull() (fetch a sample), and survey().
 """
 import os
 import sys
@@ -28,7 +28,7 @@ def fmt(v):
 def cols_of(ep):
     c = config.egress_get(f"{ep}/docs/columns")
     if isinstance(c, list) and c and isinstance(c[0], dict):
-        return list(c[0].keys())          # report endpoints return data rows
+        return list(c[0].keys())
     if isinstance(c, list):
         return [x for x in c if isinstance(x, str)]
     return []
@@ -42,19 +42,41 @@ def show_columns(cols):
         print(f"  first cols: {', '.join(map(str, cols[:24]))}{more}")
 
 
-def show_rows(rows, limit=3, fields=None):
-    if not isinstance(rows, list):
-        print("  ", str(rows)[:200])
+def as_rows(resp):
+    """Normalize any egress/report response to (rows_list, totals_dict)."""
+    if isinstance(resp, list):
+        return resp, None
+    if isinstance(resp, dict):
+        totals = resp.get("totals") if isinstance(resp.get("totals"), dict) else None
+        for k in ("results", "data", "rows", "report", "records", "agents"):
+            if isinstance(resp.get(k), list):
+                return resp[k], totals
+        return [], totals
+    return [], None
+
+
+def _kv_block(label, row, fields, width):
+    print(f"  -- {label} --")
+    keys = fields if fields else list(row.keys())
+    for k in keys:
+        if not fields or k in row:
+            print(f"    {str(k).ljust(width)}   {fmt(row.get(k))}")
+
+
+def show_rows(resp, limit=3, fields=None):
+    if isinstance(resp, str):
+        print("  ", resp[:200])
         return
-    if not rows:
+    rows, totals = as_rows(resp)
+    if not rows and not totals:
         print("  (no rows returned)")
         return
+    allkeys = fields or (list(rows[0].keys()) if rows else list((totals or {}).keys()))
+    width = max((len(str(k)) for k in allkeys), default=0)
     for i, r in enumerate(rows[:limit]):
-        items = [(k, r.get(k)) for k in fields] if fields else list(r.items())
-        w = max((len(str(k)) for k, _ in items), default=0)
-        print(f"  -- row {i + 1} of {len(rows)} --")
-        for k, v in items:
-            print(f"    {str(k).ljust(w)}   {fmt(v)}")
+        _kv_block(f"row {i + 1} of {len(rows)}", r, fields, width)
+    if totals:
+        _kv_block("totals", totals, fields, width)
 
 
 def pull(ep, n=5, cols=None, timeout=None):
@@ -78,13 +100,15 @@ def survey(endpoint, sample_cols=None, date_field=None, count_col=None, report_d
             res = config.egress_get(endpoint, {
                 "aggregates": True, "aggregate": True, "columns": [count_col],
                 date_field: su, date_field + "_end": eu, "start_date": su, "end_date": eu})
-            print(f"    {rk.ljust(12)} {t._first_num(res) if isinstance(res, list) else res}")
+            rows, _ = as_rows(res)
+            print(f"    {rk.ljust(12)} {t._first_num(rows) if rows else res}")
         print("    (today < this_month  =>  date filtering works)")
     elif report_dates:
         print("\ndate test (rows: today vs this_month):")
         for rk in ("today", "this_month"):
             s, e = t.date_range_for(rk)
             res = config.egress_get(endpoint, {"start_date": s + " 00:00:00", "end_date": e + " 23:59:59"})
-            print(f"    {rk.ljust(12)} rows={len(res) if isinstance(res, list) else res}")
+            rows, _ = as_rows(res)
+            print(f"    {rk.ljust(12)} rows={len(rows)}")
 
     print("\nDone. Paste this back.")

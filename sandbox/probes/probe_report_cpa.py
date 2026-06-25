@@ -2,9 +2,9 @@
 Probe the rich CPA report (report_cpa_agent / tldialer/report_agentcpa) — readable.
 Read-only, agent-level aggregates (no customer PII).
 
-Requests only key columns (the full report is 524 cols and times out), uses a
-longer timeout, sends dates as 'YYYY-MM-DD HH:MM:SS', and compares today vs last
-month in both body and query-string form to see if it date-filters.
+Requests only key columns, longer timeout, dates as 'YYYY-MM-DD HH:MM:SS', and
+compares today vs last month (body + query). Prints a clean per-agent table plus
+the report's own TOTALS row, and a date-filter verdict.
 
 Usage:
   python3 sandbox/probes/probe_report_cpa.py report_cpa_agent
@@ -14,8 +14,7 @@ import sys
 import requests
 import _probe_lib as p
 
-config = p.config
-t = p.t
+config, t = p.config, p.t
 config.require_creds()
 
 ep = (sys.argv[1] if len(sys.argv) > 1 else "report_cpa_agent").strip("/")
@@ -40,25 +39,29 @@ def fetch(mode, dates):
         return f"ERR {type(ex).__name__}: {str(ex)[:60]}"
 
 
+def line(r):
+    return (f"    {str(r.get('agent'))[:22].ljust(22)} "
+            f"sales={t._num(r.get('sales')):<5} pol={t._num(r.get('policies')):<5} "
+            f"cost=${t._num(r.get('costs_all')):<9,.0f} "
+            f"CPA_all/sale=${t._num(r.get('cpa_cost_calls_all_by_sales')):<8,.2f} "
+            f"CPA_falcon/sale=${t._num(r.get('cpa_cost_calls_billable_new_vendor_by_sales')):,.2f}")
+
+
 def report(label, mode, dates):
-    rows = fetch(mode, dates)
+    resp = fetch(mode, dates)
     print(f"\n-- {mode}  |  {label} --")
-    if not isinstance(rows, list):
-        print("  ", rows)
+    if isinstance(resp, str):
+        print("  ", resp)
         return None
+    rows, totals = p.as_rows(resp)
     sales = sum(t._num(r.get("sales")) for r in rows)
     cost = sum(t._num(r.get("costs_all")) for r in rows)
-    print(f"  {len(rows)} rows   sales_total={sales}   cost_total=${cost:,.0f}")
-    sellers = [r for r in rows if t._num(r.get("sales")) > 0][:6]
-    if sellers:
-        print(f"    {'agent'.ljust(22)} {'sales':>5} {'pol':>4} {'cost':>9} "
-              f"{'CPA all/sale':>13} {'CPA falcon/sale':>16}")
-        for r in sellers:
-            print(f"    {str(r.get('agent'))[:22].ljust(22)} "
-                  f"{t._num(r.get('sales')):>5} {t._num(r.get('policies')):>4} "
-                  f"${t._num(r.get('costs_all')):>8,.0f} "
-                  f"${t._num(r.get('cpa_cost_calls_all_by_sales')):>12,.2f} "
-                  f"${t._num(r.get('cpa_cost_calls_billable_new_vendor_by_sales')):>15,.2f}")
+    print(f"  {len(rows)} agents   sales(sum of rows)={sales:,}   cost(sum of rows)=${cost:,.0f}")
+    for r in [x for x in rows if t._num(x.get("sales")) > 0][:6]:
+        print(line(r))
+    if totals:
+        print("  TOTALS:")
+        print(line(totals))
     return (len(rows), sales, round(cost))
 
 

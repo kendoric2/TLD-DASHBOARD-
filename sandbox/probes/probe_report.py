@@ -23,9 +23,10 @@ print("\nsample:")
 p.show_rows(p.pull(ep, 3), 3)
 
 
-def summ(rows):
-    if not isinstance(rows, list):
-        return str(rows)[:50]
+def summ(resp):
+    if isinstance(resp, str):
+        return resp[:50]
+    rows, _ = p.as_rows(resp)
     return (f"rows={len(rows):<4} sales={sum(t._num(x.get('sales')) for x in rows):<5} "
             f"cost={sum(t._num(x.get('cost')) for x in rows):,.0f}")
 
