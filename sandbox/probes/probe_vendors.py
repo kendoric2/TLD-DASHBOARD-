@@ -1,53 +1,19 @@
-"""
-Probe the TLDCRM vendors endpoint (read-only) to see what's available.
+"""Probe /api/egress/vendors — human-readable. Lists every vendor (id + name).
+Run: python3 sandbox/probes/probe_vendors.py"""
+import _probe_lib as p
 
-Run on your Mac:
-    cd ~/Documents/TLDDASHBOARD
-    python3 sandbox/probes/probe_vendors.py
+p.config.require_creds()
+p.hr("/api/egress/vendors")
+p.show_columns(p.cols_of("vendors"))
 
-Lists the vendors columns, then pulls every vendor (id + name) and prints one
-full record so we can see all fields. Read-only: GET (column list) and
-GET-with-JSON-body (data).
-"""
-
-# --- make src/ importable no matter where this script is run from ---
-import os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
-
-import json
-import config
-
-config.require_creds()
-
-
-def vid(v):
-    return v.get("vendor_id") or v.get("id")
-
-
-def vname(v):
-    return v.get("name") or v.get("vendor_name") or v.get("vendor") or "?"
-
-
-# 1) Column list
-print("=== vendors columns ===")
-try:
-    cols = config.egress_get("vendors/docs/columns")
-    print(cols if isinstance(cols, list) else json.dumps(cols)[:900])
-except Exception as ex:
-    print("FAILED:", ex)
-
-# 2) All vendors (GET with JSON body)
-print("\n=== vendors ===")
-rows = config.egress_get("vendors", {"limit": 500})
+rows = p.pull("vendors", 500)
+print("\nvendors (id  →  name):")
 if isinstance(rows, list):
-    print(f"{len(rows)} vendors:")
-    for v in rows:
-        print(f"  id={vid(v)}  {vname(v)}")
-    if rows:
-        print("\n=== sample vendor record (all default fields) ===")
-        print(json.dumps(rows[0], indent=2)[:1500])
+    for v in sorted(rows, key=lambda x: str(x.get("name") or "")):
+        vid = v.get("vendor_id") or v.get("id")
+        name = v.get("name") or v.get("vendor_name") or v.get("vendor") or "?"
+        print(f"    {str(vid).ljust(8)} {name}")
+    print(f"\n  {len(rows)} vendors total.")
 else:
-    print(rows)
-    print("\nIf this says 'Not Allowed', make sure /api/egress/vendors has GET enabled on the key.")
-
-print("\nDone. Paste this back and we can use vendors for the billable-leads breakdown.")
+    print("  ", rows)
+print("\nDone. Paste this back.")

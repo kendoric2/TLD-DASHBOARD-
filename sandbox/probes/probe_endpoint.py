@@ -1,38 +1,19 @@
 """
-Generic read-only probe for any egress endpoint: shows its columns and a few
-sample rows. GET for the column list, GET-with-JSON-body for the data.
+Generic read-only probe for any egress endpoint — human-readable.
+Shows columns + join keys + an aligned sample.
 
 Usage:
     python3 sandbox/probes/probe_endpoint.py vendors
-    python3 sandbox/probes/probe_endpoint.py vendorperformance
+    python3 sandbox/probes/probe_endpoint.py report_cpa_agent
 """
+import sys
+import _probe_lib as p
 
-# --- make src/ importable no matter where this script is run from ---
-import os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+ep = (sys.argv[1] if len(sys.argv) > 1 else "vendors").strip("/")
 
-import json
-import config
-
-config.require_creds()
-
-ep = sys.argv[1] if len(sys.argv) > 1 else "vendors"
-
-print(f"=== {ep} columns ===")
-try:
-    cols = config.egress_get(f"{ep}/docs/columns")
-    print(cols if isinstance(cols, list) else json.dumps(cols)[:1200])
-except Exception as ex:
-    print("FAILED:", ex)
-
-print(f"\n=== {ep} sample (up to 5 rows) ===")
-rows = config.egress_get(ep, {"limit": 5})
-if isinstance(rows, list):
-    print(f"{len(rows)} rows")
-    for r in rows[:5]:
-        print(json.dumps(r)[:500])
-else:
-    print(rows)
-    print(f"(if 'Not Allowed', make sure /api/egress/{ep} has GET enabled on the key)")
-
+p.config.require_creds()
+p.hr(f"/api/egress/{ep}")
+p.show_columns(p.cols_of(ep))
+print("\nsample (up to 5 rows):")
+p.show_rows(p.pull(ep, 5), limit=5)
 print("\nDone. Paste this back.")
