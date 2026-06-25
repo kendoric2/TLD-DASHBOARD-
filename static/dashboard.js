@@ -48,10 +48,11 @@ function render(d) {
 function renderKPIs(k) {
   const fmt = n => (n ?? 0).toLocaleString();
   const cards = [
-    {label:"Policies Sold",              value: fmt(k.policies_sold)},
-    {label:"Billable Leads (Purchased)", value: fmt(k.billable_leads)},
-    {label:"Conversion Rate",            value: (k.conversion_rate ?? 0) + "%"},
-    {label:"Avg Premium · GTL only",     value: "$" + fmt(k.avg_gtl_premium),
+    {label:"Policies Sold",           value: fmt(k.policies_sold)},
+    {label:"Billable Leads · Falcon", value: fmt(k.billable_leads)},
+    {label:"Conversion Rate",         value: (k.conversion_rate ?? 0) + "%",
+       note:"Falcon leads ending Active or Sale"},
+    {label:"Avg Premium · GTL only",  value: "$" + fmt(k.avg_gtl_premium),
        note:"GTL is the only carrier with premium"},
   ];
   $("#kpis").innerHTML = cards.map(c => `

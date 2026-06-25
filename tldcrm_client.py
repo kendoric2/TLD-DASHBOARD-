@@ -25,6 +25,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as _f:
     PAYLOADS = json.load(_f)["queries"]
 
+# A Falcon billable lead counts as "converted" when its status is one of these.
+CONVERTED_STATUSES = {"active", "sale"}
+
 
 def date_range_for(range_key):
     """Return (start, end) as ISO dates (YYYY-MM-DD) for the selected period."""
@@ -74,11 +77,12 @@ class TLDCRMClient:
         body = dict(cfg["payload"])
         if cfg.get("date_bounded") and start and end:
             su, eu = _us(start), _us(end)
-            body["start_date"] = su
-            body["end_date"] = eu
-            if cfg.get("date_field") == "date_sold":
-                body["date_sold"] = su
-                body["date_sold_end"] = eu
+            df = cfg.get("date_field", "date_sold")
+            body[df] = su              # range start on this endpoint's date (date_sold / date_created)
+            body[df + "_end"] = eu     # range end
+            if df == "date_sold":      # start_date/end_date also filter date_sold (the reliable dual)
+                body["start_date"] = su
+                body["end_date"] = eu
         return cfg["endpoint"], body
 
     def run(self, query_name, start=None, end=None):
@@ -134,7 +138,7 @@ class TLDCRMClient:
         # concurrently — the dashboard loads in ~one round-trip instead of seven.
         jobs = {
             "policies":   lambda: _first_num(self.run("policies_count", start, end)),
-            "leads":      lambda: _first_num(self.run("billable_leads_count", start, end)),
+            "falcon":     lambda: self.run("falcon_billable_status", start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
             "by_carrier": lambda: self._grouped("policies_by_carrier", start, end),
             "by_plan":    lambda: self._grouped("policies_by_plan", start, end),
@@ -156,8 +160,14 @@ class TLDCRMClient:
                 results[k] = v
 
         policies = results.get("policies") or 0
-        leads = results.get("leads") or 0
-        conv = round(policies / leads * 100, 1) if leads else 0.0
+
+        # Falcon billable leads + conversion: a billable Falcon lead is
+        # "converted" if its status ended in Active or Sale.
+        falcon_rows = results.get("falcon") or []
+        billable = sum(_num(r.get("tql_cnt_lead_id")) for r in falcon_rows)
+        converted = sum(_num(r.get("tql_cnt_lead_id")) for r in falcon_rows
+                        if str(r.get("status_name") or "").strip().lower() in CONVERTED_STATUSES)
+        conv = round(converted / billable * 100, 1) if billable else 0.0
 
         recent = [{
             "date_sold": r.get("date_sold"),
@@ -174,7 +184,7 @@ class TLDCRMClient:
             "date_range": {"start": start, "end": end},
             "kpis": {
                 "policies_sold": policies,
-                "billable_leads": leads,
+                "billable_leads": billable,
                 "conversion_rate": conv,
                 "avg_gtl_premium": results.get("avg_gtl") or 0,
             },

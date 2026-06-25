@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "description": "JSON request bodies for TLDCRM read-only egress queries. Sent as POST with Content-Type: application/json. PULL ONLY — nothing is written back.",
-    "date_rule": "Date filtering = set the date column to a TLD relative label in the body, e.g. {\"date_sold\": \"This Month\"}. The client injects <date_field> = <label> for date_bounded queries.",
+    "description": "JSON request bodies for TLDCRM read-only egress queries. Sent as GET requests with a JSON body (Content-Type: application/json). PULL ONLY — nothing is written back.",
+    "date_rule": "Date filtering uses explicit M/D/YYYY ranges, not relative labels. For date_bounded queries the client sets <date_field> + <date_field>_end to the resolved range; when date_field is date_sold it also adds start_date + end_date (the reliable dual). See tldcrm_client._payload().",
     "notes": "columns is a JSON array; sort direction is 'sort' (ASC|DESC). Matches the working payload shape from TLD."
   },
   "queries": {
@@ -16,7 +16,14 @@
       "endpoint": "leads",
       "date_bounded": true,
       "date_field": "date_created",
-      "payload": { "billable": 1, "aggregates": true, "aggregate": true, "columns": ["tql_cnt_lead_id"] }
+      "payload": { "vendor_id": 14646, "billable": 1, "aggregates": true, "aggregate": true, "columns": ["tql_cnt_lead_id"] }
+    },
+
+    "falcon_billable_status": {
+      "endpoint": "leads",
+      "date_bounded": true,
+      "date_field": "date_created",
+      "payload": { "vendor_id": 14646, "billable": 1, "aggregates": true, "group_by": "status_name", "columns": ["status_name", "tql_cnt_lead_id"], "order_by": "tql_cnt_lead_id", "sort": "DESC", "limit": 100 }
     },
 
     "avg_gtl_premium": {
