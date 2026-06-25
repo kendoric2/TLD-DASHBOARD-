@@ -75,15 +75,35 @@ function renderKPIs(k) {
     </div>`).join("");
 }
 
+// Carrier brand colors (from each carrier's logo/website). Matched by name;
+// unknown carriers fall back to a neutral slate palette.
+const CARRIER_COLORS = {
+  aetna:"#7D3F98",
+  unitedhealthcare:"#002677", uhc:"#002677",
+  humana:"#5BA908",
+  cigna:"#0080C9",
+  wellcare:"#009CA6",
+  guaranteetrustlife:"#07436F", gtl:"#07436F",
+  anthem:"#0077C6", elevance:"#0077C6",
+  bluecross:"#0099CC", bcbs:"#0099CC",
+  kaiserpermanente:"#006BA7", kaiser:"#006BA7",
+  mutualofomaha:"#003A70",
+};
+const CARRIER_FALLBACK = ['#7E8AA8','#A9B7C9','#5B6B86','#C0CAD8','#8E9BB0','#6B7C93'];
+function carrierColor(label, i) {
+  const k = String(label || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const key in CARRIER_COLORS) { if (k.includes(key)) return CARRIER_COLORS[key]; }
+  return CARRIER_FALLBACK[i % CARRIER_FALLBACK.length];
+}
+
 function renderDoughnut(id, rows) {
   rows = rows || [];
-  const colors = [C('--brand'),C('--brand-dark'),C('--brand-2'),C('--warn'),'#7E8AA8','#A9B7C9','#CDD8E6'];
   charts[id]?.destroy();
   charts[id] = new Chart(document.getElementById(id), {
     type:'doughnut',
     data:{labels: rows.map(r=>r.label),
       datasets:[{data: rows.map(r=>r.count),
-        backgroundColor: rows.map((_,i)=>colors[i%colors.length]), borderWidth:0}]},
+        backgroundColor: rows.map((r,i)=>carrierColor(r.label,i)), borderWidth:0}]},
     options:{cutout:'62%', plugins:{legend:{position:'right', labels:{boxWidth:12, font:{size:12}}}},
       maintainAspectRatio:false}
   });
