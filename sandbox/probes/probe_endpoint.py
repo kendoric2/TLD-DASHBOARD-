@@ -3,10 +3,14 @@ Generic read-only probe for any egress endpoint: shows its columns and a few
 sample rows. GET for the column list, GET-with-JSON-body for the data.
 
 Usage:
-    python3 probe_endpoint.py vendors
-    python3 probe_endpoint.py vendorperformance
+    python3 sandbox/probes/probe_endpoint.py vendors
+    python3 sandbox/probes/probe_endpoint.py vendorperformance
 """
-import sys
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+
 import json
 import config
 

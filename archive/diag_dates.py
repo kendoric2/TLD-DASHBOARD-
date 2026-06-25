@@ -3,12 +3,17 @@ Diagnose how TLDCRM date filtering works on the policies endpoint (read-only).
 
 Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
-    python3 diag_dates.py
+    python3 archive/diag_dates.py
 
 Then paste the full output back. This figures out which date column is actually
 current and which filter form returns a sane monthly number.
 Read-only: only GET requests.
 """
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+
 import requests
 import config
 

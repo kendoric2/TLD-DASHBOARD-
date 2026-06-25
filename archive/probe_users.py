@@ -3,13 +3,18 @@ Probe TLDCRM users and find those with an Active status (read-only).
 
 Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
-    python3 probe_users.py
+    python3 archive/probe_users.py
 
 Read-only: GET for the column list, POST (JSON body) for the queries.
 It lists the users columns, tries the likely "active" filters (showing how many
 each returns + sample names), and prints one full user record so we can see
 exactly how status is stored. Paste the output back.
 """
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+
 import json
 import requests
 import config

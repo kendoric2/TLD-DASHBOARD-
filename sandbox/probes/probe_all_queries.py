@@ -3,11 +3,16 @@ Live diagnostic for the TLDCRM dashboard (read-only, POST + JSON body).
 
 Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
-    python3 probe.py
+    python3 sandbox/probes/probe_all_queries.py
 
 Shows the RAW POST response for the policies count (so we confirm the date
 range actually filters), then runs each dashboard query. Read-only.
 """
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+
 
 import json
 import config

@@ -3,12 +3,17 @@ Verify the live numbers filter correctly by date (read-only, GET + JSON body).
 
 Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
-    python3 verify_numbers.py
+    python3 tests/verify_counts_by_range.py
 
 If the date filter works, the counts GROW with the range
 (today < this week < this month < this quarter) — they should NOT all be the
 same ~all-time number. Then compare 'this_month' policies to what TLD shows you.
 """
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+
 import config
 import tldcrm_client as t
 

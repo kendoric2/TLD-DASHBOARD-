@@ -5,8 +5,13 @@ Read-only, GET + JSON body.
 
 Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
-    python3 probe_falcon.py
+    python3 sandbox/probes/probe_falcon.py
 """
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+
 import config
 import tldcrm_client as t
 

@@ -3,12 +3,17 @@ Reconcile billable leads by vendor/source (read-only, GET + JSON body).
 
 Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
-    python3 probe_billables.py
+    python3 archive/probe_billables.py
 
 The leads endpoint only carries vendor_id (no name), so we map ids -> names
 via the /vendors endpoint, then show billable leads per source for today and
 this month. Look for the row that matches your 534.
 """
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+
 import config
 import tldcrm_client as t
 

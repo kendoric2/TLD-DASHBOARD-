@@ -23,4 +23,4 @@ fi
 
 # Launch the dashboard. app.py opens your browser at http://localhost:5050.
 # Because of 'exec', this app's process IS the server — quitting the app stops it.
-exec "$PY" app.py
+exec "$PY" src/app.py

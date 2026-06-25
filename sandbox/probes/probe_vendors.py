@@ -3,12 +3,17 @@ Probe the TLDCRM vendors endpoint (read-only) to see what's available.
 
 Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
-    python3 probe_vendors.py
+    python3 sandbox/probes/probe_vendors.py
 
 Lists the vendors columns, then pulls every vendor (id + name) and prints one
 full record so we can see all fields. Read-only: GET (column list) and
 GET-with-JSON-body (data).
 """
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+
 import json
 import config
 

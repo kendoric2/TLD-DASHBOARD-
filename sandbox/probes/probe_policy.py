@@ -3,7 +3,7 @@ Probe a single TLDCRM policy and print EVERY available column (read-only).
 
 Usage (on a machine that can reach your TLD instance, e.g. your Mac):
     cd ~/Documents/TLDDASHBOARD
-    python3 probe_policy.py 17779643      # or omit the id to use the default
+    python3 sandbox/probes/probe_policy.py 17779643      # or omit the id to use the default
 
 Shows all columns, including empty ones. It requests the full joined column
 set via the schema's related tables (leads, products, carriers, plans, users,
@@ -13,7 +13,11 @@ Sensitive PCI/PHI (card/bank numbers, CVV, SSN, DOB, Medicare/Medicaid IDs,
 passwords) are masked. The full (masked) output is also written to
 policy_<id>.txt so you can scroll it / share it easily.
 """
-import sys
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+
 import json
 import requests
 import config

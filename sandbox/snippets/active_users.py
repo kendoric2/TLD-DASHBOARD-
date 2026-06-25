@@ -4,8 +4,13 @@ Read-only POST to /api/egress/users.
 
 Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
-    python3 active_users.py
+    python3 sandbox/snippets/active_users.py
 """
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+
 import config
 
 config.require_creds()

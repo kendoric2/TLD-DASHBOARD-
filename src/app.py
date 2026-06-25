@@ -17,7 +17,7 @@ JavaScript (static/dashboard.js)        =  GUI LAYER
 
 Runs in DEMO mode (sample data) until TLD credentials are filled into .env.
 """
-
+import os
 import threading
 import webbrowser
 from flask import Flask, jsonify, render_template, request
@@ -32,7 +32,11 @@ try:
 except Exception:
     date_range_for = None
 
-app = Flask(__name__)
+# This file lives in src/; templates/ and static/ are at the project root (one level up).
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app = Flask(__name__,
+            template_folder=os.path.join(_ROOT, "templates"),
+            static_folder=os.path.join(_ROOT, "static"))
 
 RANGE_LABELS = {
     "today": "Today",
@@ -89,7 +93,7 @@ def health():
 
 if __name__ == "__main__":
     # Default to 5050 — macOS uses port 5000 for AirPlay Receiver, which serves
-    # a 403 "Access denied" page. Override anytime with: PORT=8000 python3 app.py
+    # a 403 "Access denied" page. Override anytime with: PORT=8000 python3 src/app.py
     port = config.PORT
     url = f"http://localhost:{port}"
     print(f"\n  iHealth Plans dashboard  ->  {url}\n  (press CTRL+C to stop)\n")

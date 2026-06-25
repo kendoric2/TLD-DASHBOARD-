@@ -3,12 +3,16 @@ List the available columns for the TLDCRM policies endpoint (read-only).
 
 Run on a machine that can reach your TLD instance (your Mac):
     cd ~/Documents/TLDDASHBOARD
-    python3 list_columns.py
+    python3 sandbox/probes/probe_policy_columns.py
 
 Hits GET /api/egress/policies/docs/columns and prints the column names so we
 can lock in the real field names for the dashboard. Read-only — only a GET.
 """
-import sys
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+
 import json
 import requests
 import config
