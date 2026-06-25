@@ -13,18 +13,12 @@ Sensitive PCI/PHI (card/bank numbers, CVV, SSN, DOB, Medicare/Medicaid IDs,
 passwords) are masked. The full (masked) output is also written to
 policy_<id>.txt so you can scroll it / share it easily.
 """
-import os
 import sys
 import json
 import requests
-from dotenv import load_dotenv
+import config
 
-load_dotenv()
-base = os.getenv("TLD_BASE_URL", "").strip().rstrip("/")
-hid = os.getenv("TLD_API_ID", "").strip()
-key = os.getenv("TLD_API_KEY", "").strip()
-if not (base and hid and key):
-    sys.exit("Fill TLD_BASE_URL / TLD_API_ID / TLD_API_KEY in .env first.")
+config.require_creds()
 
 policy_id = sys.argv[1] if len(sys.argv) > 1 else "17779643"
 
@@ -34,15 +28,10 @@ policy_id = sys.argv[1] if len(sys.argv) > 1 else "17779643"
 IMPORTS = ["leads", "products", "carriers", "policy_carriers",
            "product_carriers", "plans", "policy_fields", "users", "vendors"]
 
-url = base + "/api/egress/policies"
+url = config.TLD_BASE_URL + "/api/egress/policies"
 params = {"policy_id": policy_id, "limit": 1, "import": IMPORTS}
 print("GET", url, "(policy_id=%s)" % policy_id)
-r = requests.get(
-    url,
-    headers={"tld-api-id": hid, "tld-api-key": key, "Accept": "application/json"},
-    params=params,
-    timeout=60,
-)
+r = requests.get(url, headers=config.HEADERS_GET, params=params, timeout=config.POLICY_TIMEOUT)
 print("HTTP", r.status_code)
 data = r.json()
 

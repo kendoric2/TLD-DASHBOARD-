@@ -16,14 +16,16 @@
       "endpoint": "leads",
       "date_bounded": true,
       "date_field": "date_created",
-      "payload": { "vendor_id": 14646, "billable": 1, "aggregates": true, "aggregate": true, "columns": ["tql_cnt_lead_id"] }
+      "falcon_vendor": true,
+      "payload": { "billable": 1, "aggregates": true, "aggregate": true, "columns": ["tql_cnt_lead_id"] }
     },
 
     "falcon_billable_status": {
       "endpoint": "leads",
       "date_bounded": true,
       "date_field": "date_created",
-      "payload": { "vendor_id": 14646, "billable": 1, "aggregates": true, "group_by": "status_name", "columns": ["status_name", "tql_cnt_lead_id"], "order_by": "tql_cnt_lead_id", "sort": "DESC", "limit": 100 }
+      "falcon_vendor": true,
+      "payload": { "billable": 1, "aggregates": true, "group_by": "status_name", "columns": ["status_name", "tql_cnt_lead_id"], "order_by": "tql_cnt_lead_id", "sort": "DESC", "limit": 100 }
     },
 
     "avg_gtl_premium": {

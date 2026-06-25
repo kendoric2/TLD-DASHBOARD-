@@ -8,27 +8,16 @@ Run on a machine that can reach your TLD instance (your Mac):
 Hits GET /api/egress/policies/docs/columns and prints the column names so we
 can lock in the real field names for the dashboard. Read-only — only a GET.
 """
-import os
 import sys
 import json
 import requests
-from dotenv import load_dotenv
+import config
 
-load_dotenv()
-base = os.getenv("TLD_BASE_URL", "").strip().rstrip("/")
-hid = os.getenv("TLD_API_ID", "").strip()
-key = os.getenv("TLD_API_KEY", "").strip()
+config.require_creds()
 
-if not (base and hid and key):
-    sys.exit("Fill TLD_BASE_URL / TLD_API_ID / TLD_API_KEY in .env first.")
-
-url = base + "/api/egress/policies/docs/columns"
+url = config.TLD_BASE_URL + "/api/egress/policies/docs/columns"
 print("GET", url)
-r = requests.get(
-    url,
-    headers={"tld-api-id": hid, "tld-api-key": key, "Accept": "application/json"},
-    timeout=20,
-)
+r = requests.get(url, headers=config.HEADERS_GET, timeout=config.TIMEOUT)
 print("HTTP", r.status_code)
 
 try:

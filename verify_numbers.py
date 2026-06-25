@@ -9,14 +9,11 @@ If the date filter works, the counts GROW with the range
 (today < this week < this month < this quarter) — they should NOT all be the
 same ~all-time number. Then compare 'this_month' policies to what TLD shows you.
 """
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+import config
 import tldcrm_client as t
 
-c = t.TLDCRMClient(os.getenv("TLD_BASE_URL", ""), os.getenv("TLD_API_ID", ""),
-                   os.getenv("TLD_API_KEY", ""))
+config.require_creds()
+c = t.TLDCRMClient(config.TLD_BASE_URL, config.TLD_API_ID, config.TLD_API_KEY)
 
 
 def count(query, s, e):

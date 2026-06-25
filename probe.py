@@ -9,32 +9,25 @@ Shows the RAW POST response for the policies count (so we confirm the date
 range actually filters), then runs each dashboard query. Read-only.
 """
 
-import os
 import json
-from dotenv import load_dotenv
-
-load_dotenv()
+import config
 import tldcrm_client as t
 
-base = os.getenv("TLD_BASE_URL", "").strip()
-hid = os.getenv("TLD_API_ID", "").strip()
-key = os.getenv("TLD_API_KEY", "").strip()
-print("Base URL:", base or "(EMPTY)")
-print("API ID  :", hid or "(empty)")
-print("API key :", "set" if key else "(empty)")
-if not (base and hid and key):
-    raise SystemExit("\nFill all three values in .env first.")
+print("Base URL:", config.TLD_BASE_URL or "(EMPTY)")
+print("API ID  :", config.TLD_API_ID or "(empty)")
+print("API key :", "set" if config.TLD_API_KEY else "(empty)")
+config.require_creds()
 
-c = t.TLDCRMClient(base, hid, key, timeout=30)
+c = t.TLDCRMClient(config.TLD_BASE_URL, config.TLD_API_ID, config.TLD_API_KEY)
 s, e = t.date_range_for("this_month")
 print(f"\nThis month: {s} .. {e}   (sent as {t._us(s)} .. {t._us(e)})")
 
-# --- RAW POST for the policies count, so we see the filtered envelope ---
+# --- RAW GET for the policies count, so we see the filtered envelope ---
 endpoint, body = c._payload("policies_count", s, e)
-url = f"{base.rstrip('/')}/api/egress/{endpoint}"
+url = f"{config.TLD_BASE_URL}/api/egress/{endpoint}"
 print(f"\n=== RAW GET /api/egress/{endpoint} (JSON body) ===")
 print("body:", json.dumps(body))
-r = c.session.request("GET", url, json=body, timeout=30)
+r = c.session.request("GET", url, json=body, timeout=config.TIMEOUT)
 print("HTTP", r.status_code)
 print(r.text[:1400])
 

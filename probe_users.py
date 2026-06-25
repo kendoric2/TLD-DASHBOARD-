@@ -10,33 +10,18 @@ It lists the users columns, tries the likely "active" filters (showing how many
 each returns + sample names), and prints one full user record so we can see
 exactly how status is stored. Paste the output back.
 """
-import os
 import json
 import requests
-from dotenv import load_dotenv
+import config
 
-load_dotenv()
-base = os.getenv("TLD_BASE_URL", "").strip().rstrip("/")
-hid = os.getenv("TLD_API_ID", "").strip()
-key = os.getenv("TLD_API_KEY", "").strip()
-if not (base and hid and key):
-    raise SystemExit("Fill TLD_BASE_URL / TLD_API_ID / TLD_API_KEY in .env first.")
-
-H_GET = {"tld-api-id": hid, "tld-api-key": key, "Accept": "application/json"}
-H_POST = {**H_GET, "Content-Type": "application/json"}
-
-
-def unwrap(d):
-    if isinstance(d, dict):
-        resp = d.get("response", d)
-        return resp.get("results", resp) if isinstance(resp, dict) else resp
-    return d
+config.require_creds()
 
 
 def post(body):
-    r = requests.get(f"{base}/api/egress/users", headers=H_POST, json=body, timeout=40)
+    r = requests.get(f"{config.TLD_BASE_URL}/api/egress/users",
+                     headers=config.HEADERS, json=body, timeout=config.TIMEOUT)
     try:
-        return unwrap(r.json())
+        return config.unwrap(r.json())
     except Exception:
         return f"HTTP {r.status_code}: {r.text[:150]}"
 
@@ -50,8 +35,9 @@ def name_of(u):
 # 1) Column list for the users endpoint
 print("=== users columns ===")
 try:
-    r = requests.get(f"{base}/api/egress/users/docs/columns", headers=H_GET, timeout=40)
-    cols = unwrap(r.json())
+    r = requests.get(f"{config.TLD_BASE_URL}/api/egress/users/docs/columns",
+                     headers=config.HEADERS_GET, timeout=config.TIMEOUT)
+    cols = config.unwrap(r.json())
     print(cols if isinstance(cols, list) else json.dumps(cols)[:900])
 except Exception as ex:
     print("FAILED:", ex)

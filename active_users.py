@@ -6,24 +6,10 @@ Run on your Mac:
     cd ~/Documents/TLDDASHBOARD
     python3 active_users.py
 """
-import os
-import json
-import requests
-from dotenv import load_dotenv
+import config
 
-load_dotenv()
-base = os.getenv("TLD_BASE_URL", "").strip().rstrip("/")
-hid = os.getenv("TLD_API_ID", "").strip()
-key = os.getenv("TLD_API_KEY", "").strip()
-if not (base and hid and key):
-    raise SystemExit("Fill TLD_BASE_URL / TLD_API_ID / TLD_API_KEY in .env first.")
+config.require_creds()
 
-headers = {
-    "tld-api-id": hid,
-    "tld-api-key": key,
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-}
 body = {
     "status_id": 1,
     "columns": ["full_name", "status_id"],
@@ -32,13 +18,10 @@ body = {
     "limit": 2000,
 }
 
-r = requests.get(f"{base}/api/egress/users", headers=headers, json=body, timeout=40)
-data = r.json()
-resp = data.get("response", data)
-rows = resp.get("results", resp) if isinstance(resp, dict) else resp
+rows = config.egress_get("users", body)
 
 if not isinstance(rows, list):
-    print("Could not read users:", json.dumps(data)[:300])
+    print("Could not read users:", str(rows)[:300])
     print("\nIf this says 'Not Allowed', make sure /api/egress/users has GET enabled on the API key.")
     raise SystemExit
 

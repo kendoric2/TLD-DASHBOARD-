@@ -18,15 +18,11 @@ import datetime
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-API_ID_HEADER = "tld-api-id"
-API_KEY_HEADER = "tld-api-key"
+import config
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as _f:
     PAYLOADS = json.load(_f)["queries"]
-
-# A Falcon billable lead counts as "converted" when its status is one of these.
-CONVERTED_STATUSES = {"active", "sale"}
 
 
 def date_range_for(range_key):
@@ -58,13 +54,13 @@ def _us(iso_date):
 
 
 class TLDCRMClient:
-    def __init__(self, base_url, api_id, api_key, timeout=30):
+    def __init__(self, base_url, api_id, api_key, timeout=config.TIMEOUT):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update({
-            API_ID_HEADER: str(api_id),
-            API_KEY_HEADER: str(api_key),
+            config.API_ID_HEADER: str(api_id),
+            config.API_KEY_HEADER: str(api_key),
             "Content-Type": "application/json",
             "Accept": "application/json",
         })
@@ -83,6 +79,8 @@ class TLDCRMClient:
             if df == "date_sold":      # start_date/end_date also filter date_sold (the reliable dual)
                 body["start_date"] = su
                 body["end_date"] = eu
+        if cfg.get("falcon_vendor"):   # inject the Falcon vendor id from config (single source of truth)
+            body["vendor_id"] = config.FALCON_VENDOR_ID
         return cfg["endpoint"], body
 
     def run(self, query_name, start=None, end=None):
@@ -166,7 +164,7 @@ class TLDCRMClient:
         falcon_rows = results.get("falcon") or []
         billable = sum(_num(r.get("tql_cnt_lead_id")) for r in falcon_rows)
         converted = sum(_num(r.get("tql_cnt_lead_id")) for r in falcon_rows
-                        if str(r.get("status_name") or "").strip().lower() in CONVERTED_STATUSES)
+                        if str(r.get("status_name") or "").strip().lower() in config.CONVERTED_STATUSES)
         conv = round(converted / billable * 100, 1) if billable else 0.0
 
         recent = [{

@@ -9,28 +9,22 @@ Then paste the full output back. This figures out which date column is actually
 current and which filter form returns a sane monthly number.
 Read-only: only GET requests.
 """
-import os
 import requests
-from dotenv import load_dotenv
+import config
 
-load_dotenv()
-base = os.getenv("TLD_BASE_URL", "").rstrip("/")
-H = {"tld-api-id": os.getenv("TLD_API_ID", ""),
-     "tld-api-key": os.getenv("TLD_API_KEY", ""),
-     "Accept": "application/json"}
+config.require_creds()
 
 START, END = "2026-06-01", "2026-06-25"
 FIELDS = ["date_sold", "date_created", "date_modified", "date_effective"]
 
 
 def q(params):
-    r = requests.get(f"{base}/api/egress/policies", headers=H, params=params, timeout=40)
+    r = requests.get(f"{config.TLD_BASE_URL}/api/egress/policies",
+                     headers=config.HEADERS_GET, params=params, timeout=config.TIMEOUT)
     try:
-        d = r.json()
+        return config.unwrap(r.json())
     except Exception:
         return f"HTTP {r.status_code}: {r.text[:120]}"
-    resp = d.get("response", d)
-    return resp.get("results", resp)
 
 
 print("1) Min / max of each candidate date column (all policies):")

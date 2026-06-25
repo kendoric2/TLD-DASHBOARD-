@@ -9,27 +9,10 @@ Lists the vendors columns, then pulls every vendor (id + name) and prints one
 full record so we can see all fields. Read-only: GET (column list) and
 GET-with-JSON-body (data).
 """
-import os
 import json
-import requests
-from dotenv import load_dotenv
+import config
 
-load_dotenv()
-base = os.getenv("TLD_BASE_URL", "").strip().rstrip("/")
-hid = os.getenv("TLD_API_ID", "").strip()
-key = os.getenv("TLD_API_KEY", "").strip()
-if not (base and hid and key):
-    raise SystemExit("Fill TLD_BASE_URL / TLD_API_ID / TLD_API_KEY in .env first.")
-
-H = {"tld-api-id": hid, "tld-api-key": key,
-     "Content-Type": "application/json", "Accept": "application/json"}
-
-
-def unwrap(d):
-    if isinstance(d, dict):
-        resp = d.get("response", d)
-        return resp.get("results", resp) if isinstance(resp, dict) else resp
-    return d
+config.require_creds()
 
 
 def vid(v):
@@ -43,16 +26,14 @@ def vname(v):
 # 1) Column list
 print("=== vendors columns ===")
 try:
-    r = requests.get(f"{base}/api/egress/vendors/docs/columns", headers=H, timeout=40)
-    cols = unwrap(r.json())
+    cols = config.egress_get("vendors/docs/columns")
     print(cols if isinstance(cols, list) else json.dumps(cols)[:900])
 except Exception as ex:
     print("FAILED:", ex)
 
 # 2) All vendors (GET with JSON body)
 print("\n=== vendors ===")
-r = requests.get(f"{base}/api/egress/vendors", headers=H, json={"limit": 500}, timeout=40)
-rows = unwrap(r.json())
+rows = config.egress_get("vendors", {"limit": 500})
 if isinstance(rows, list):
     print(f"{len(rows)} vendors:")
     for v in rows:

@@ -18,17 +18,11 @@ JavaScript (static/dashboard.js)        =  GUI LAYER
 Runs in DEMO mode (sample data) until TLD credentials are filled into .env.
 """
 
-import os
 import threading
 import webbrowser
 from flask import Flask, jsonify, render_template, request
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
-
+import config
 from sample_data import get_sample_dashboard
 
 # date_range_for only reads the JSON template (no credentials needed); used so
@@ -51,12 +45,9 @@ RANGE_LABELS = {
 
 def _client():
     """Return a live client if credentials are configured, else None (demo)."""
-    base = os.getenv("TLD_BASE_URL", "").strip()
-    api_id = os.getenv("TLD_API_ID", "").strip()
-    api_key = os.getenv("TLD_API_KEY", "").strip()
-    if base and api_id and api_key:
+    if config.have_creds():
         from tldcrm_client import TLDCRMClient
-        return TLDCRMClient(base, api_id, api_key)
+        return TLDCRMClient(config.TLD_BASE_URL, config.TLD_API_ID, config.TLD_API_KEY)
     return None
 
 
@@ -99,10 +90,10 @@ def health():
 if __name__ == "__main__":
     # Default to 5050 — macOS uses port 5000 for AirPlay Receiver, which serves
     # a 403 "Access denied" page. Override anytime with: PORT=8000 python3 app.py
-    port = int(os.getenv("PORT", "5050"))
+    port = config.PORT
     url = f"http://localhost:{port}"
     print(f"\n  iHealth Plans dashboard  ->  {url}\n  (press CTRL+C to stop)\n")
     # Pop the browser open once the server is up (set NO_BROWSER=1 to disable).
-    if not os.getenv("NO_BROWSER"):
+    if not config.NO_BROWSER:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     app.run(host="127.0.0.1", port=port, debug=False)
