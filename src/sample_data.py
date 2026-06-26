@@ -10,6 +10,8 @@ def get_sample_dashboard(range_label="This Month"):
             "billable_leads": 1840,
             "conversion_rate": 16.9,
             "avg_gtl_premium": 1562,
+            "total_spend": 5460,
+            "blended_cpa": 24.27,
         },
         "by_carrier": [
             {"label": "Aetna", "count": 87},
@@ -25,12 +27,12 @@ def get_sample_dashboard(range_label="This Month"):
             {"label": "Prescription Drug (PDP)", "count": 42},
         ],
         "recent_sales": [
-            {"date_sold": "Jun 24", "agent": "Maria Alvarez", "product": "Medicare Advantage", "carrier": "Aetna", "premium": None, "status": "issued"},
-            {"date_sold": "Jun 24", "agent": "David Chen", "product": "Med Supp Plan G", "carrier": "UnitedHealthcare", "premium": None, "status": "submitted"},
-            {"date_sold": "Jun 24", "agent": "Sarah Johnson", "product": "Final Expense", "carrier": "Guarantee Trust Life", "premium": 1560, "status": "issued"},
-            {"date_sold": "Jun 23", "agent": "James Okafor", "product": "Medicare Advantage", "carrier": "Cigna", "premium": None, "status": "pending"},
-            {"date_sold": "Jun 23", "agent": "Priya Patel", "product": "Medicare Advantage", "carrier": "WellCare", "premium": None, "status": "issued"},
-            {"date_sold": "Jun 23", "agent": "Luis Romero", "product": "Med Supp Plan N", "carrier": "Humana", "premium": None, "status": "submitted"},
+            {"date_sold": "Jun 24", "agent": "Maria Alvarez", "enroller": "Carlos Ruiz", "carrier": "Aetna"},
+            {"date_sold": "Jun 24", "agent": "David Chen", "enroller": "Tina Brooks", "carrier": "UnitedHealthcare"},
+            {"date_sold": "Jun 24", "agent": "Sarah Johnson", "enroller": None, "carrier": "Guarantee Trust Life"},
+            {"date_sold": "Jun 23", "agent": "James Okafor", "enroller": "Marcus Lee", "carrier": "Cigna"},
+            {"date_sold": "Jun 23", "agent": "Priya Patel", "enroller": "Carlos Ruiz", "carrier": "WellCare"},
+            {"date_sold": "Jun 23", "agent": "Luis Romero", "enroller": "Tina Brooks", "carrier": "Humana"},
         ],
         "agents": [
             {"name": "Maria Alvarez", "calls": 412, "talk_time": "14h 10m", "policies": 41, "conversion": 19.8, "cost": 754, "cpa": 18.40},
@@ -41,4 +43,5 @@ def get_sample_dashboard(range_label="This Month"):
             {"name": "Luis Romero", "calls": 322, "talk_time": "9h 48m", "policies": 26, "conversion": 15.1, "cost": 810, "cpa": 31.15},
             {"name": "Aisha Bello", "calls": 298, "talk_time": "9h 05m", "policies": 24, "conversion": 14.6, "cost": 715, "cpa": 29.80},
         ],
+        "agent_totals": {"policies": 225, "cost": 5460, "cpa": 24.27},
     }

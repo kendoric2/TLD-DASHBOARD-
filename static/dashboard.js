@@ -59,12 +59,18 @@ function render(d) {
 
 function renderKPIs(k) {
   const fmt = n => (n ?? 0).toLocaleString();
+  const money0 = n => "$" + Number(n ?? 0).toLocaleString(undefined, {maximumFractionDigits:0});
   const cards = [
-    {label:"Policies Sold",           value: fmt(k.policies_sold)},
-    {label:"Billable Leads · Falcon", value: fmt(k.billable_leads)},
-    {label:"Conversion Rate",         value: (k.conversion_rate ?? 0) + "%",
-       note:"Falcon leads ending Active or Sale"},
-    {label:"Avg Premium · GTL only",  value: "$" + fmt(k.avg_gtl_premium),
+    {label:"Policies Sold",     value: fmt(k.policies_sold)},
+    {label:"Billable Leads",    value: fmt(k.billable_leads),
+       note:"All vendors · billable"},
+    {label:"Conversion Rate",   value: (k.conversion_rate ?? 0) + "%",
+       note:"Billable leads ending Active or Sale"},
+    {label:"Total Spend",       value: money0(k.total_spend),
+       note:"Lead cost this period"},
+    {label:"Blended CPA",       value: "$" + Number(k.blended_cpa ?? 0).toFixed(2),
+       note:"Total spend ÷ sales"},
+    {label:"Avg Premium · GTL", value: money0(k.avg_gtl_premium),
        note:"GTL is the only carrier with premium"},
   ];
   $("#kpis").innerHTML = cards.map(c => `
@@ -124,15 +130,11 @@ function renderBar(id, rows) {
 function renderRecent(rows) {
   $("#recent").innerHTML = (rows || []).map(r => {
     const date = r.date_sold ? String(r.date_sold).split(" ")[0] : "";
-    const prem = Number(r.premium) > 0
-      ? '$' + Number(r.premium).toLocaleString()
-      : '<span class="dash">—</span>';
+    const enroller = r.enroller ? r.enroller : '<span class="dash">—</span>';
     return `
     <tr>
       <td>${date}</td><td>${r.agent ?? ""}</td>
-      <td>${r.product ?? ""}</td><td>${r.carrier ?? ""}</td>
-      <td class="num">${prem}</td>
-      <td><span class="pill ${String(r.status||'').toLowerCase()}">${r.status ?? ""}</span></td>
+      <td>${enroller}</td><td>${r.carrier ?? ""}</td>
     </tr>`;
   }).join("");
 }
@@ -153,6 +155,19 @@ function renderAgents(rows) {
       <td class="num">${a.cost != null ? '$' + Number(a.cost).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</td>
       <td class="num">${a.cpa != null ? '$' + Number(a.cpa).toFixed(2) : '—'}</td>
     </tr>`).join("");
+
+  // agent count next to the section title
+  $("#agentCount").textContent = rows.length ? ` · ${rows.length} agents` : "";
+
+  // pinned totals row (totals come from the report; policies summed from the table)
+  const t = lastData && lastData.agent_totals;
+  $("#agentTotals").innerHTML = t ? `
+    <tr>
+      <td>Totals</td>
+      <td class="num">${Number(t.policies||0).toLocaleString()}</td>
+      <td class="num">$${Number(t.cost||0).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+      <td class="num">$${Number(t.cpa||0).toFixed(2)}</td>
+    </tr>` : "";
 }
 
 /* ---- GUI events ---- */

@@ -151,9 +151,10 @@ class TLDCRMClient:
         return agents
 
     def agent_cpa(self, start, end):
-        """Per-agent CPA + COST from report_cpa_agent for the date range, returned as
-        {name_key: {"cpa": cpa_cost_calls_all_by_sales, "cost": costs_all}}. This report
-        honors date/date_end + date_sold/date_sold_end (NOT start_date/end_date).
+        """Per-agent CPA + COST plus period totals from report_cpa_agent for the date
+        range. Returns {"by_agent": {name_key: {"cpa":..., "cost":...}},
+        "totals": {"cost":..., "sales":..., "cpa":...}}. This report honors
+        date/date_end + date_sold/date_sold_end (NOT start_date/end_date).
 
         Cached per (start, end) for _CPA_CACHE_TTL seconds so the 30s auto-refresh
         reuses the result instead of re-running this heavy report on every tick."""
@@ -174,13 +175,16 @@ class TLDCRMClient:
         resp = config.egress_get("report_cpa_agent", body, timeout=max(self.timeout, 90))
 
         # report_cpa_agent returns {data|results|rows: [...], totals: {...}} (sometimes
-        # wrapped in "response", which egress_get already peels). Pull out the row list.
+        # wrapped in "response", which egress_get already peels). Pull out rows + totals.
         rows = resp if isinstance(resp, list) else []
+        totals = {}
         if isinstance(resp, dict):
             for k in ("results", "data", "rows", "report", "records", "agents"):
                 if isinstance(resp.get(k), list):
                     rows = resp[k]
                     break
+            if isinstance(resp.get("totals"), dict):
+                totals = resp["totals"]
 
         out = {}
         for r in rows:
@@ -194,15 +198,27 @@ class TLDCRMClient:
             out[full] = rec
             out.setdefault(loose, rec)               # loose alias (drops middle name) as a fallback match
 
+        # Period totals: prefer the report's own totals row; else sum the rows.
+        if totals:
+            tot = {"cost":  _num(totals.get("costs_all")),
+                   "sales": _num(totals.get("sales")),
+                   "cpa":   _num(totals.get("cpa_cost_calls_all_by_sales"))}
+        else:
+            tcost = sum(_num(r.get("costs_all")) for r in rows if isinstance(r, dict))
+            tsales = sum(_num(r.get("sales")) for r in rows if isinstance(r, dict))
+            tot = {"cost": tcost, "sales": tsales,
+                   "cpa": round(tcost / tsales, 2) if tsales else 0}
+
         # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the
         # browser sees. Lets us confirm row count + the exact name format the report returns.
         print(f"[agent_cpa] {start}->{end}: {len(rows)} report rows; "
               f"sample agents={[r.get('agent') for r in rows[:5] if isinstance(r, dict)]}",
               file=sys.stderr)
 
+        result = {"by_agent": out, "totals": tot}
         with _CPA_LOCK:
-            _CPA_CACHE[cache_key] = (now, out)
-        return out
+            _CPA_CACHE[cache_key] = (now, result)
+        return result
 
     def build_dashboard(self, range_key, range_label):
         start, end = date_range_for(range_key)
@@ -211,7 +227,7 @@ class TLDCRMClient:
         # concurrently — the dashboard loads in ~one round-trip instead of seven.
         jobs = {
             "policies":   lambda: _first_num(self.run("policies_count", start, end)),
-            "falcon":     lambda: self.run("falcon_billable_status", start, end),
+            "billable":   lambda: self.run("billable_status", start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
             "by_carrier": lambda: self._grouped("policies_by_carrier", start, end),
             "by_plan":    lambda: self._grouped("policies_by_plan", start, end),
@@ -235,28 +251,28 @@ class TLDCRMClient:
 
         policies = results.get("policies") or 0
 
-        # Falcon billable leads + conversion: a billable Falcon lead is
+        # Billable leads (all vendors) + conversion: a billable lead is
         # "converted" if its status ended in Active or Sale.
-        falcon_rows = results.get("falcon") or []
-        billable = sum(_num(r.get("tql_cnt_lead_id")) for r in falcon_rows)
-        converted = sum(_num(r.get("tql_cnt_lead_id")) for r in falcon_rows
+        billable_rows = results.get("billable") or []
+        billable = sum(_num(r.get("tql_cnt_lead_id")) for r in billable_rows)
+        converted = sum(_num(r.get("tql_cnt_lead_id")) for r in billable_rows
                         if str(r.get("status_name") or "").strip().lower() in config.CONVERTED_STATUSES)
         conv = round(converted / billable * 100, 1) if billable else 0.0
 
         recent = [{
             "date_sold": r.get("date_sold"),
             "agent": r.get("agent_name") or r.get("agent"),
-            "product": r.get("product_name") or r.get("product"),
+            "enroller": r.get("fronter_name") or r.get("fronter"),
             "carrier": r.get("carrier_name") or r.get("carrier"),
-            "premium": r.get("premium"),
-            "status": r.get("status"),
         } for r in (results.get("recent") or [])]
 
         # Merge per-agent CPA + COST (from report_cpa_agent) into the agent rows, matched
         # by name. Try the full normalized name first, then the loose (first+last) key so
         # a middle name on either side doesn't break the match.
         agents = results.get("agents") or []
-        cpa_map = results.get("agent_cpa") or {}
+        cpa_data = results.get("agent_cpa") or {}
+        cpa_map = cpa_data.get("by_agent") or {}
+        cpa_totals = cpa_data.get("totals") or {}
         matched = 0
         for a in agents:
             full, loose = _name_keys(a.get("name"))
@@ -268,6 +284,16 @@ class TLDCRMClient:
         print(f"[cpa merge] matched {matched}/{len(agents)} agents; "
               f"dashboard sample={[a.get('name') for a in agents[:5]]}", file=sys.stderr)
 
+        # Period totals (from the report) for the Total Spend / Blended CPA tiles and
+        # the agent totals row. Policies total is summed from the agent table itself.
+        total_spend = cpa_totals.get("cost") or 0
+        blended_cpa = cpa_totals.get("cpa") or 0
+        agent_totals = {
+            "policies": sum(_num(a.get("policies")) for a in agents),
+            "cost": total_spend,
+            "cpa": blended_cpa,
+        }
+
         data = {
             "demo": False,
             "range_label": range_label,
@@ -277,11 +303,14 @@ class TLDCRMClient:
                 "billable_leads": billable,
                 "conversion_rate": conv,
                 "avg_gtl_premium": results.get("avg_gtl") or 0,
+                "total_spend": total_spend,
+                "blended_cpa": blended_cpa,
             },
             "by_carrier": results.get("by_carrier") or [],
             "by_plan": results.get("by_plan") or [],
             "recent_sales": recent,
             "agents": agents,
+            "agent_totals": agent_totals,
         }
         if errors:
             data["error"] = "Some metrics didn't load: " + "; ".join(errors)

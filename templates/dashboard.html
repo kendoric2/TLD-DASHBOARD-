@@ -50,26 +50,29 @@
   <div class="card" style="margin-top:16px">
     <h3>Recent Sales</h3>
     <table>
-      <thead><tr><th>Date</th><th>Agent</th><th>Plan</th><th>Carrier</th><th class="num">Premium</th><th>Status</th></tr></thead>
+      <thead><tr><th>Date</th><th>Agent</th><th>Enroller</th><th>Carrier</th></tr></thead>
       <tbody id="recent"></tbody>
     </table>
   </div>
 
-  <div class="section-title">Agent Performance · <span class="rangeLabel">This Month</span>
+  <div class="section-title">Agent Performance · <span class="rangeLabel">This Month</span><span class="agentCount" id="agentCount"></span>
     <span class="hint">— click a column to sort</span>
   </div>
   <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th data-sort="name">Agent</th>
-          <th class="num" data-sort="policies">Policies Sold</th>
-          <th class="num" data-sort="cost">COST</th>
-          <th class="num" data-sort="cpa">CPA</th>
-        </tr>
-      </thead>
-      <tbody id="agents"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="name">Agent</th>
+            <th class="num" data-sort="policies">Policies Sold</th>
+            <th class="num" data-sort="cost">COST</th>
+            <th class="num" data-sort="cpa">CPA</th>
+          </tr>
+        </thead>
+        <tbody id="agents"></tbody>
+        <tfoot id="agentTotals"></tfoot>
+      </table>
+    </div>
   </div>
 </main>
 

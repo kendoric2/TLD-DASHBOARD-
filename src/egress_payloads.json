@@ -15,15 +15,13 @@
       "endpoint": "leads",
       "date_bounded": true,
       "date_field": "date_created",
-      "falcon_vendor": true,
       "payload": { "billable": 1, "aggregates": true, "aggregate": true, "columns": ["tql_cnt_lead_id"] }
     },
 
-    "falcon_billable_status": {
+    "billable_status": {
       "endpoint": "leads",
       "date_bounded": true,
       "date_field": "date_created",
-      "falcon_vendor": true,
       "payload": { "billable": 1, "aggregates": true, "group_by": "status_name", "columns": ["status_name", "tql_cnt_lead_id"], "order_by": "tql_cnt_lead_id", "sort": "DESC", "limit": 100 }
     },
 
@@ -50,7 +48,7 @@
     "recent_sales": {
       "endpoint": "policies",
       "date_bounded": false,
-      "payload": { "sold": 1, "columns": ["date_sold", "agent_name", "product", "carrier_name", "premium", "status"], "order_by": "date_sold", "sort": "DESC", "limit": 12 }
+      "payload": { "sold": 1, "columns": ["date_sold", "agent_name", "fronter_name", "carrier_name"], "order_by": "date_sold", "sort": "DESC", "limit": 12 }
     },
 
     "agent_policies": {

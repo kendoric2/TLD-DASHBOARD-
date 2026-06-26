@@ -67,7 +67,7 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
   border-radius:10px;font-size:13px;margin-bottom:14px}
 
 /* KPI cards */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   padding:16px 18px;box-shadow:var(--shadow)}
 .kpi .label{font-size:12px;color:var(--muted);font-weight:600}
@@ -101,6 +101,13 @@ tbody tr:hover{background:#F7FAFD}
 .pill.pending{background:#FEF3DC;color:#8A5A00}
 .pill.submitted{background:#E8ECF5;color:#182A54}
 .dash{color:var(--muted)}
+
+/* Scrollable Agent Performance: fixed height, sticky header + sticky totals row */
+.table-scroll{max-height:480px;overflow-y:auto}
+.table-scroll thead th{position:sticky;top:0;background:var(--card);z-index:2;box-shadow:inset 0 -1px 0 var(--line)}
+.table-scroll tfoot td{position:sticky;bottom:0;background:#EFF4F9;font-weight:800;color:var(--brand-dark);box-shadow:inset 0 1px 0 var(--line)}
+.table-scroll tfoot tr:hover{background:#EFF4F9}
+.agentCount{color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0}
 
 footer{max-width:1280px;margin:0 auto;padding:18px 28px 40px;color:var(--muted);font-size:12px}
 @media(max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}.grid-2b{grid-template-columns:1fr}}
