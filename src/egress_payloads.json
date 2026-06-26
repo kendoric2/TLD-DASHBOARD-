@@ -1,14 +1,13 @@
 {
   "_meta": {
     "description": "JSON request bodies for TLDCRM read-only egress queries. Sent as GET requests with a JSON body (Content-Type: application/json). PULL ONLY — nothing is written back.",
-    "date_rule": "Date filtering uses explicit M/D/YYYY ranges, not relative labels. For date_bounded queries the client sets <date_field> + <date_field>_end to the resolved range; when date_field is date_sold it also adds start_date + end_date (the reliable dual). See tldcrm_client._payload().",
+    "date_rule": "TLD's canonical date filter: the client sends BOTH date + date_end AND date_sold + date_sold_end, formatted 'YYYY-MM-DD HH:MM:SS' with full-day bounds (00:00:00 .. 23:59:59). This holds for the policies endpoint and the CPA report. EXCEPTION: the raw leads endpoint ignores date/date_sold and must be filtered on date_created — those queries set 'date_field': 'date_created' to override (verified by probe_migrate_check.py). Queries flagged 'date_bounded': true get date handling in tldcrm_client._payload().",
     "notes": "columns is a JSON array; sort direction is 'sort' (ASC|DESC). Matches the working payload shape from TLD."
   },
   "queries": {
     "policies_count": {
       "endpoint": "policies",
       "date_bounded": true,
-      "date_field": "date_sold",
       "payload": { "aggregates": true, "aggregate": true, "columns": ["tql_cnt_policy_id"] }
     },
 
@@ -31,14 +30,12 @@
     "avg_gtl_premium": {
       "endpoint": "policies",
       "date_bounded": true,
-      "date_field": "date_sold",
       "payload": { "carrier": "GTL", "aggregates": true, "aggregate": true, "columns": ["tql_avg_premium"] }
     },
 
     "policies_by_carrier": {
       "endpoint": "policies",
       "date_bounded": true,
-      "date_field": "date_sold",
       "label_field": "carrier_name",
       "payload": { "aggregates": true, "group_by": "carrier_name", "columns": ["carrier_name", "tql_cnt_policy_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC" }
     },
@@ -46,7 +43,6 @@
     "policies_by_plan": {
       "endpoint": "policies",
       "date_bounded": true,
-      "date_field": "date_sold",
       "label_field": "product",
       "payload": { "aggregates": true, "group_by": "product", "columns": ["product", "tql_cnt_policy_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC" }
     },
@@ -60,8 +56,7 @@
     "agent_policies": {
       "endpoint": "policies",
       "date_bounded": true,
-      "date_field": "date_sold",
-      "payload": { "aggregates": true, "group_by": "agent_name", "columns": ["agent_name", "tql_cnt_policy_id", "tql_cnu_lead_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC", "limit": 1000 }
+      "payload": { "aggregates": true, "group_by": "agent_name", "columns": ["agent_name", "tql_cnt_policy_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC", "limit": 1000 }
     }
   }
 }

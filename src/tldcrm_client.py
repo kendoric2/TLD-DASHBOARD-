@@ -4,10 +4,12 @@ TLDCRM read-only API client (the "egress" layer).
 PULL ONLY: queries are sent as GET requests with a JSON body to
 /api/egress/* endpoints to READ data. Nothing is ever written back.
 
-Query shapes live in egress_payloads.json. Date filtering uses TLD's explicit
-range form in the JSON body: start_date + end_date, and (for date_sold) also
-date_sold + date_sold_end — sending both is what makes wide date ranges
-reliable (per TLD's own request conventions). Dates are M/D/YYYY.
+Query shapes live in egress_payloads.json. Date filtering follows TLD's canonical
+rule: the JSON body carries BOTH date/date_end AND date_sold/date_sold_end,
+full-day bounds, formatted 'YYYY-MM-DD HH:MM:SS'. That holds for the policies
+endpoint and the CPA report. The raw leads endpoint is the exception — it ignores
+date/date_sold and is filtered on date_created instead (see _payload's date_field
+override).
 
 Auth: API ID and Key are sent as request headers.
 """
@@ -78,20 +80,28 @@ class TLDCRMClient:
         })
 
     def _payload(self, query_name, start=None, end=None):
-        """Return (endpoint, json_body). For date-bounded queries add the TLD
-        date range (M/D/YYYY): start_date + end_date always, plus
-        date_sold + date_sold_end when the field is date_sold (the reliable dual)."""
+        """Return (endpoint, json_body). Date-bounded queries get TLD's canonical
+        date filter — BOTH date/date_end AND date_sold/date_sold_end, full-day
+        bounds, 'YYYY-MM-DD HH:MM:SS' — which the policies endpoint and the CPA
+        report honor. The raw leads endpoint is the exception: it ignores
+        date/date_sold and must be filtered on date_created, so such a query sets
+        'date_field' to override with <field>/<field>_end. (Proven by
+        probe_migrate_check.py: canonical on leads returned the whole unfiltered
+        table; date_created returns the correct in-range count.)"""
         cfg = PAYLOADS[query_name]
         body = dict(cfg["payload"])
         if cfg.get("date_bounded") and start and end:
-            su, eu = _us(start), _us(end)
-            df = cfg.get("date_field", "date_sold")
-            body[df] = su              # range start on this endpoint's date (date_sold / date_created)
-            body[df + "_end"] = eu     # range end
-            if df == "date_sold":      # start_date/end_date also filter date_sold (the reliable dual)
-                body["start_date"] = su
-                body["end_date"] = eu
-        if cfg.get("falcon_vendor"):   # inject the Falcon vendor id from config (single source of truth)
+            s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"   # full-day bounds, YYYY-MM-DD HH:MM:SS
+            df = cfg.get("date_field")
+            if df:                         # endpoint-specific override (leads -> date_created)
+                body[df] = s0
+                body[df + "_end"] = e1
+            else:                          # canonical default (policies endpoint, CPA report)
+                body["date"] = s0
+                body["date_end"] = e1
+                body["date_sold"] = s0
+                body["date_sold_end"] = e1
+        if cfg.get("falcon_vendor"):       # inject the Falcon vendor id from config (single source of truth)
             body["vendor_id"] = config.FALCON_VENDOR_ID
         return cfg["endpoint"], body
 
@@ -137,14 +147,13 @@ class TLDCRMClient:
             agents.append({
                 "name": name,
                 "policies": _num(row.get("tql_cnt_policy_id")),
-                "leads": _num(row.get("tql_cnu_lead_id")),
             })
         return agents
 
     def agent_cpa(self, start, end):
-        """Per-agent CPA (cpa_cost_calls_all_by_sales) from report_cpa_agent for the
-        date range, returned as {name_key: cpa}. This report honors
-        date/date_end + date_sold/date_sold_end (NOT start_date/end_date).
+        """Per-agent CPA + COST from report_cpa_agent for the date range, returned as
+        {name_key: {"cpa": cpa_cost_calls_all_by_sales, "cost": costs_all}}. This report
+        honors date/date_end + date_sold/date_sold_end (NOT start_date/end_date).
 
         Cached per (start, end) for _CPA_CACHE_TTL seconds so the 30s auto-refresh
         reuses the result instead of re-running this heavy report on every tick."""
@@ -157,7 +166,7 @@ class TLDCRMClient:
 
         s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
         body = {
-            "columns": ["agent", "agent_id", "sales", "cpa_cost_calls_all_by_sales"],
+            "columns": ["agent", "agent_id", "sales", "costs_all", "cpa_cost_calls_all_by_sales"],
             "limit": 1000,                           # cover the full roster (matches agent_policies)
             "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1,
         }
@@ -180,9 +189,10 @@ class TLDCRMClient:
             full, loose = _name_keys(r.get("agent"))
             if not full:
                 continue
-            cpa = _num(r.get("cpa_cost_calls_all_by_sales"))
-            out[full] = cpa
-            out.setdefault(loose, cpa)               # loose alias (drops middle name) as a fallback match
+            rec = {"cpa":  _num(r.get("cpa_cost_calls_all_by_sales")),
+                   "cost": _num(r.get("costs_all"))}
+            out[full] = rec
+            out.setdefault(loose, rec)               # loose alias (drops middle name) as a fallback match
 
         # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the
         # browser sees. Lets us confirm row count + the exact name format the report returns.
@@ -242,19 +252,18 @@ class TLDCRMClient:
             "status": r.get("status"),
         } for r in (results.get("recent") or [])]
 
-        # Merge per-agent CPA (from report_cpa_agent) into the agent rows, matched by
-        # name. Try the full normalized name first, then the loose (first+last) key so
+        # Merge per-agent CPA + COST (from report_cpa_agent) into the agent rows, matched
+        # by name. Try the full normalized name first, then the loose (first+last) key so
         # a middle name on either side doesn't break the match.
         agents = results.get("agents") or []
         cpa_map = results.get("agent_cpa") or {}
         matched = 0
         for a in agents:
             full, loose = _name_keys(a.get("name"))
-            cpa = cpa_map.get(full)
-            if cpa is None:
-                cpa = cpa_map.get(loose)
-            a["cpa"] = cpa
-            if cpa is not None:
+            rec = cpa_map.get(full) or cpa_map.get(loose)
+            a["cpa"] = rec["cpa"] if rec else None
+            a["cost"] = rec["cost"] if rec else None
+            if rec:
                 matched += 1
         print(f"[cpa merge] matched {matched}/{len(agents)} agents; "
               f"dashboard sample={[a.get('name') for a in agents[:5]]}", file=sys.stderr)
