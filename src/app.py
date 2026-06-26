@@ -62,8 +62,8 @@ def index():
 
 @app.route("/api/dashboard")
 def api_dashboard():
-    range_key = request.args.get("range", "this_month")
-    label = RANGE_LABELS.get(range_key, "This Month")
+    range_key = request.args.get("range", "today")
+    label = RANGE_LABELS.get(range_key, "Today")
 
     client = _client()
     if client is None:
@@ -91,7 +91,7 @@ def api_agent_cpa():
     """Lazy endpoint for the heavy CPA report. The page renders first from /api/dashboard,
     then fetches this to fill COST/CPA + the Total Spend / Blended CPA tiles. Cached
     server-side (5 min), so after the first call it returns instantly."""
-    range_key = request.args.get("range", "this_month")
+    range_key = request.args.get("range", "today")
     client = _client()
     if client is None or date_range_for is None:
         return jsonify({"by_agent": {}, "totals": {}})    # demo: sample data already carries CPA/COST
@@ -110,7 +110,7 @@ def _warm_cpa_cache():
     if client is None or date_range_for is None:
         return
     try:
-        s, e = date_range_for("this_month")
+        s, e = date_range_for("today")
         client.agent_cpa(s, e)
     except Exception:
         pass
