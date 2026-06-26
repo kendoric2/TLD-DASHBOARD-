@@ -192,7 +192,8 @@ class TLDCRMClient:
         date/date_end + date_sold/date_sold_end (NOT start_date/end_date)."""
         s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
         body = {
-            "columns": ["agent", "agent_id", "sales", "costs_all", "cpa_cost_calls_all_by_sales"],
+            "columns": ["agent", "agent_id", "sales", "costs_all",
+                        "cpa_cost_calls_all_by_sales", "calls_billable"],
             "limit": 1000,                           # cover the full roster (matches agent_policies)
             "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1,
         }
@@ -227,12 +228,15 @@ class TLDCRMClient:
         if totals:
             tot = {"cost":  _num(totals.get("costs_all")),
                    "sales": _num(totals.get("sales")),
-                   "cpa":   _num(totals.get("cpa_cost_calls_all_by_sales"))}
+                   "cpa":   _num(totals.get("cpa_cost_calls_all_by_sales")),
+                   "billable_calls": _num(totals.get("calls_billable"))}
         else:
             tcost = sum(_num(r.get("costs_all")) for r in rows if isinstance(r, dict))
             tsales = sum(_num(r.get("sales")) for r in rows if isinstance(r, dict))
+            tcalls = sum(_num(r.get("calls_billable")) for r in rows if isinstance(r, dict))
             tot = {"cost": tcost, "sales": tsales,
-                   "cpa": round(tcost / tsales, 2) if tsales else 0}
+                   "cpa": round(tcost / tsales, 2) if tsales else 0,
+                   "billable_calls": tcalls}
 
         # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the browser sees.
         print(f"[agent_cpa] {start}->{end}: {len(rows)} report rows; "
@@ -297,8 +301,7 @@ class TLDCRMClient:
             "date_range": {"start": start, "end": end},
             "kpis": {
                 "policies_sold": policies,
-                "billable_leads": billable,
-                "conversion_rate": conv,
+                "conversion_rate": conv,          # still computed from billable leads (denominator)
                 "avg_gtl_premium": results.get("avg_gtl") or 0,
             },
             "by_carrier": results.get("by_carrier") or [],

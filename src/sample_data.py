@@ -7,7 +7,7 @@ def get_sample_dashboard(range_label="This Month"):
         "range_label": range_label,
         "kpis": {
             "policies_sold": 312,
-            "billable_leads": 1840,
+            "billable_calls": 2480,
             "conversion_rate": 16.9,
             "avg_gtl_premium": 1562,
             "total_spend": 5460,
