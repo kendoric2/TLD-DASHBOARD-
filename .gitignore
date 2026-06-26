@@ -4,6 +4,8 @@
 # Local data / probe output (may contain customer PII) — never commit
 policy_*.txt
 *.local.json
+*.xlsx
+egress_columns.xlsx
 
 # Python
 __pycache__/
