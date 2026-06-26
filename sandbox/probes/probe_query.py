@@ -31,7 +31,7 @@ COLUMNS  = ["lead_id", "date_created", "status_name", "vendor_id",   # <- column
 
 DATE_FIELD = "date_created"                # <- which date column the range filters on
                                            #    leads -> date_created (or date_assigned);  policies -> date_sold
-START    = "2026-06-01"                    # <- start date "YYYY-MM-DD"   (set both "" for no date filter)
+START    = "2026-06-25"                    # <- start date "YYYY-MM-DD"   (set both "" for no date filter)
 END      = "2026-06-25"                    # <- end date   "YYYY-MM-DD"
 
 ROWS     = 25                              # <- max rows to return

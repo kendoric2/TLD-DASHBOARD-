@@ -1,79 +1,92 @@
 """
-agentcpa date-parameter HUNT — read-only, aggregates only (no customer PII).
+agentcpa date-filtering test — read-only, human-readable.
 
-First pass showed agentcpa ignored date params sent in the JSON body. This goes
-deeper: it tries dates as URL QUERY-STRING params vs JSON body, ~10 param-name
-shapes, both date formats (M/D/YYYY and YYYY-MM-DD), and compares a PAST window
-(last_month) against TODAY. If a param actually filters, last_month's totals will
-differ from today's -> the line is flagged  *** FILTERS ***.
+Sends start_date/end_date as datetimes ('YYYY-MM-DD HH:MM:SS') in several
+combinations (body vs query, full-day vs date-only) and across windows
+(today / yesterday / last month). If TODAY and a PAST window come back with
+different totals, the date range is being honored. If everything is identical,
+agentcpa ignores dates (it's a fixed live-today report).
 
-Run:  python3 sandbox/probes/probe_agentcpa.py
+Run: python3 sandbox/probes/probe_agentcpa.py
 """
 import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+import datetime
 import requests
-import config
-import tldcrm_client as t
+import _probe_lib as p
 
+config = p.config
+t = p.t
 config.require_creds()
-URL = f"{config.TLD_BASE_URL}/api/egress/agentcpa"
 
-lm_s, lm_e = t.date_range_for("last_month")   # ISO strings
-td_s, td_e = t.date_range_for("today")
+EP = "agentcpa"
+URL = f"{config.TLD_BASE_URL}/api/egress/{EP}"
 
-
-def val(iso_date, fmt):
-    return t._us(iso_date) if fmt == "US" else iso_date
+today = datetime.date.today()
+yest = today - datetime.timedelta(days=1)
+lm_s, lm_e = t.date_range_for("last_month")
 
 
 def fetch(mode, params):
     try:
         if mode == "query":
-            r = requests.get(URL, headers=config.HEADERS_GET, params=params, timeout=config.TIMEOUT)
+            r = requests.get(URL, headers=config.HEADERS_GET, params=params, timeout=90)
         else:
-            r = requests.get(URL, headers=config.HEADERS, json=params, timeout=config.TIMEOUT)
-        rows = config.unwrap(r.json())
+            r = requests.get(URL, headers=config.HEADERS, json=params, timeout=90)
+        rows, _ = p.as_rows(config.unwrap(r.json()))
+        return rows
     except Exception as ex:
         return f"ERR {type(ex).__name__}"
+
+
+def summarize(label, rows):
     if not isinstance(rows, list):
-        return f"HTTP {getattr(r,'status_code','?')}"
-    return (len(rows), sum(t._num(x.get("sales")) for x in rows),
-            sum(t._num(x.get("policies")) for x in rows),
-            round(sum(t._num(x.get("cost")) for x in rows)))
+        print(f"  {label:46} {rows}")
+        return None
+    sales = sum(t._num(x.get("sales")) for x in rows)
+    cost = sum(t._num(x.get("cost")) for x in rows)
+    agents = sum(1 for x in rows if t._num(x.get("sales")) > 0)
+    cpa = round(cost / sales, 2) if sales else 0
+    print(f"  {label:46} sales={sales:<5} cost=${cost:<8,.0f} sellers={agents:<3} cpa=${cpa}")
+    return (len(rows), sales, cost)
 
 
-def fmt(tot):
-    return tot if isinstance(tot, str) else f"agents={tot[0]:<4} sales={tot[1]:<5} pol={tot[2]:<5} cost={tot[3]:,}"
+def dt(d, end=False):
+    return f"{d.isoformat()} {'23:59:59' if end else '00:00:00'}"
 
 
-pairs = [("start_date", "end_date"), ("date_start", "date_end"), ("from", "to"),
-         ("date_from", "date_to"), ("report_start", "report_end"),
-         ("begin_date", "end_date"), ("group_start_date", "group_end_date")]
-singles = ["date", "report_date", "day"]
+p.hr(f"/api/egress/{EP}  — date-filter combinations")
+print(f"today = {today}   yesterday = {yest}   last_month = {lm_s}..{lm_e}\n")
 
-plan = []
-for a, b in pairs:
-    plan.append(("query", "US", a, b))
-for s in singles:
-    plan.append(("query", "US", s, None))
-for a, b in pairs[:3]:
-    plan.append(("query", "ISO", a, b))
-for a, b in pairs[:4]:
-    plan.append(("body", "US", a, b))
+base = summarize("baseline (no date params)", fetch("body", {}))
+print()
 
-baseline = fetch("query", {})
-print("baseline (no params):", fmt(baseline), "\n")
+# combinations, all aiming at TODAY first, then contrast windows
+combos = [
+    ("today  full-day  body  start_date/end_date", "body",
+     {"start_date": dt(today), "end_date": dt(today, True)}),
+    ("today  full-day  query start_date/end_date", "query",
+     {"start_date": dt(today), "end_date": dt(today, True)}),
+    ("today  date-only body  start_date/end_date", "body",
+     {"start_date": today.isoformat(), "end_date": today.isoformat()}),
+    ("yesterday full-day body", "body",
+     {"start_date": dt(yest), "end_date": dt(yest, True)}),
+    ("last_month full-day body", "body",
+     {"start_date": dt(datetime.date.fromisoformat(lm_s)), "end_date": dt(datetime.date.fromisoformat(lm_e), True)}),
+]
 
-for mode, f, a, b in plan:
-    lm = {a: val(lm_s, f)} if b is None else {a: val(lm_s, f), b: val(lm_e, f)}
-    td = {a: val(td_s, f)} if b is None else {a: val(td_s, f), b: val(td_e, f)}
-    lm_t, td_t = fetch(mode, lm), fetch(mode, td)
-    flag = ""
-    if isinstance(lm_t, tuple) and isinstance(td_t, tuple) and lm_t != baseline and lm_t != td_t:
-        flag = "   *** FILTERS ***"
-    label = f"{a}{('/'+b) if b else ''} [{f}]"
-    print(f"[{mode:5}] {label:34} last_month={fmt(lm_t)}")
-    print(f"{'':7} {'':34} today     ={fmt(td_t)}{flag}")
+sigs = {}
+for label, mode, params in combos:
+    sigs[label] = summarize(label, fetch(mode, params))
 
-print("\nIf nothing is flagged *** FILTERS ***, agentcpa is fixed to today and can't be date-ranged via the API.")
+print("\nVERDICT:")
+today_sig = sigs.get("today  full-day  body  start_date/end_date")
+yest_sig = sigs.get("yesterday full-day body")
+lm_sig = sigs.get("last_month full-day body")
+if today_sig and (today_sig != yest_sig or today_sig != lm_sig):
+    print("  agentcpa DOES honor the date range (today differs from a past window). We can date-filter it.")
+elif today_sig and today_sig == base:
+    print("  agentcpa IGNORES the date range (every window == baseline). It's a fixed live-today report.")
+else:
+    print("  inconclusive — compare the rows above.")

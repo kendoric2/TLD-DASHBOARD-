@@ -62,7 +62,7 @@ def report(label, mode, dates):
     if totals:
         print("  TOTALS:")
         print(line(totals))
-    return (len(rows), sales, round(cost))
+    return (len(rows), sales)   # compare on rows+sales only; cost drifts live and gives false positives
 
 
 p.hr(f"/api/egress/{ep}   (CPA report)")
