@@ -61,7 +61,7 @@
       "endpoint": "policies",
       "date_bounded": true,
       "date_field": "date_sold",
-      "payload": { "aggregates": true, "group_by": "agent_name", "columns": ["agent_name", "tql_cnt_policy_id", "tql_cnu_lead_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC", "limit": 15 }
+      "payload": { "aggregates": true, "group_by": "agent_name", "columns": ["agent_name", "tql_cnt_policy_id", "tql_cnu_lead_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC", "limit": 1000 }
     }
   }
 }

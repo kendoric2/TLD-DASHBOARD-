@@ -158,7 +158,7 @@ class TLDCRMClient:
         s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
         body = {
             "columns": ["agent", "agent_id", "sales", "cpa_cost_calls_all_by_sales"],
-            "limit": 500,
+            "limit": 1000,                           # cover the full roster (matches agent_policies)
             "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1,
         }
         # Use the same proven request+unwrap path the working probe uses.
