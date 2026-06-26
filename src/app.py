@@ -86,6 +86,36 @@ def api_dashboard():
         return jsonify(data)
 
 
+@app.route("/api/agent_cpa")
+def api_agent_cpa():
+    """Lazy endpoint for the heavy CPA report. The page renders first from /api/dashboard,
+    then fetches this to fill COST/CPA + the Total Spend / Blended CPA tiles. Cached
+    server-side (5 min), so after the first call it returns instantly."""
+    range_key = request.args.get("range", "this_month")
+    client = _client()
+    if client is None or date_range_for is None:
+        return jsonify({"by_agent": {}, "totals": {}})    # demo: sample data already carries CPA/COST
+    try:
+        s, e = date_range_for(range_key)
+        return jsonify(client.agent_cpa(s, e))
+    except Exception as ex:
+        return jsonify({"by_agent": {}, "totals": {}, "error": str(ex)})
+
+
+def _warm_cpa_cache():
+    """Prefetch the default range's CPA report at startup so the first page view is warm.
+    Runs in a background thread; the dedupe in agent_cpa means the page's own lazy fetch
+    will share this one call instead of starting a second."""
+    client = _client()
+    if client is None or date_range_for is None:
+        return
+    try:
+        s, e = date_range_for("this_month")
+        client.agent_cpa(s, e)
+    except Exception:
+        pass
+
+
 @app.route("/health")
 def health():
     return jsonify({"ok": True, "live": _client() is not None})
@@ -100,4 +130,7 @@ if __name__ == "__main__":
     # Pop the browser open once the server is up (set NO_BROWSER=1 to disable).
     if not config.NO_BROWSER:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    # Warm the heavy CPA report for the default range in the background so the first view is fast.
+    if config.have_creds():
+        threading.Thread(target=_warm_cpa_cache, daemon=True).start()
     app.run(host="127.0.0.1", port=port, debug=False)

@@ -14,12 +14,26 @@ const AUTO_MS = 30000;    // auto-refresh every 30 seconds
 
 async function load() {
   const range = $("#range").value;
+  // On a same-range refresh, keep the last-known COST/CPA so the columns don't blink
+  // to "…" every 30s — phase 2 refreshes them from the (warm) cache right after.
+  const sameRange = lastData && lastData._range === range;
+  const prevCPA = {};
+  if (sameRange) (lastData.agents || []).forEach(a => {
+    if (a.cost !== undefined) prevCPA[a.name] = {cost: a.cost, cpa: a.cpa};
+  });
   $("#footer").textContent = "Loading…";
   try {
     const res = await fetch(`/api/dashboard?range=${encodeURIComponent(range)}`);
     const data = await res.json();
+    data._range = range;
+    if (sameRange) {                  // carry forward CPA so a refresh doesn't flicker
+      (data.agents || []).forEach(a => { const p = prevCPA[a.name]; if (p) { a.cost = p.cost; a.cpa = p.cpa; } });
+      if (lastData.kpis) { data.kpis.total_spend = lastData.kpis.total_spend; data.kpis.blended_cpa = lastData.kpis.blended_cpa; }
+      if (lastData.agent_totals) data.agent_totals = lastData.agent_totals;
+    }
     lastData = data;
     render(data);
+    if (!data.demo) loadCPA(range);   // phase 2: fill/refresh COST/CPA + cost tiles without blocking paint
   } catch (e) {
     $("#errbar").hidden = false;
     $("#errbar").textContent = "Could not reach the backend: " + e;
@@ -35,6 +49,51 @@ function armAuto() {
   clearInterval(autoTimer);
   autoTimer = null;
   if ($("#autoRefresh").checked) autoTimer = setInterval(load, AUTO_MS);
+}
+
+/* Phase 2: the heavy CPA report (COST, CPA, Total Spend, Blended CPA) loads on its
+   own so it never blocks first paint. Those fields show "…" until this returns —
+   which is instant once the server-side cache is warm. */
+async function loadCPA(range) {
+  try {
+    const res = await fetch(`/api/agent_cpa?range=${encodeURIComponent(range)}`);
+    const cpa = await res.json();
+    if (!lastData || range !== $("#range").value) return;   // ignore stale result after a range switch
+    applyCPA(cpa);
+  } catch (e) { /* leave the "…" placeholders — not fatal */ }
+}
+
+function applyCPA(cpa) {
+  const map = (cpa && cpa.by_agent) || {};
+  (lastData.agents || []).forEach(a => {
+    const [full, loose] = nameKeys(a.name);
+    const rec = map[full] || map[loose] || null;
+    a.cost = rec ? rec.cost : null;          // null => "—" (no match); undefined only before this runs
+    a.cpa  = rec ? rec.cpa  : null;
+  });
+  const tot = (cpa && cpa.totals) || {};
+  lastData.kpis = lastData.kpis || {};
+  lastData.kpis.total_spend = tot.cost ?? 0;
+  lastData.kpis.blended_cpa = tot.cpa ?? 0;
+  lastData.agent_totals = {
+    policies: (lastData.agents || []).reduce((s, a) => s + (a.policies || 0), 0),
+    cost: tot.cost ?? 0,
+    cpa: tot.cpa ?? 0,
+  };
+  renderKPIs(lastData.kpis);
+  renderAgents(lastData.agents);
+}
+
+/* Mirror of tldcrm_client._name_keys so agent rows match the CPA report's names
+   ("Last, First" <-> "First Last", plus a loose first+last key for middle names). */
+function nameKeys(s) {
+  s = (s || "").trim().toLowerCase();
+  const i = s.indexOf(",");
+  if (i >= 0) s = (s.slice(i + 1).trim() + " " + s.slice(0, i).trim()).trim();
+  const toks = s.split(/\s+/).filter(Boolean);
+  const full = toks.join(" ");
+  const loose = toks.length >= 2 ? `${toks[0]} ${toks[toks.length - 1]}` : full;
+  return [full, loose];
 }
 
 function render(d) {
@@ -60,15 +119,16 @@ function render(d) {
 function renderKPIs(k) {
   const fmt = n => (n ?? 0).toLocaleString();
   const money0 = n => "$" + Number(n ?? 0).toLocaleString(undefined, {maximumFractionDigits:0});
+  const wait = (v, fn) => v === undefined ? '<span class="dash">…</span>' : fn(v);   // "…" until phase 2
   const cards = [
     {label:"Policies Sold",     value: fmt(k.policies_sold)},
     {label:"Billable Leads",    value: fmt(k.billable_leads),
        note:"All vendors · billable"},
     {label:"Conversion Rate",   value: (k.conversion_rate ?? 0) + "%",
        note:"Billable leads ending Active or Sale"},
-    {label:"Total Spend",       value: money0(k.total_spend),
+    {label:"Total Spend",       value: wait(k.total_spend, money0),
        note:"Lead cost this period"},
-    {label:"Blended CPA",       value: "$" + Number(k.blended_cpa ?? 0).toFixed(2),
+    {label:"Blended CPA",       value: wait(k.blended_cpa, v => "$" + Number(v).toFixed(2)),
        note:"Total spend ÷ sales"},
     {label:"Avg Premium · GTL", value: money0(k.avg_gtl_premium),
        note:"GTL is the only carrier with premium"},
@@ -148,26 +208,30 @@ function renderAgents(rows) {
     return sortDir * ((x || 0) - (y || 0));
   });
   const maxP = Math.max(1, ...rows.map(a => a.policies || 0));
+  // COST/CPA show "…" until phase 2 loads them (undefined), "—" if no match (null).
+  const money0 = v => '$' + Number(v).toLocaleString(undefined,{maximumFractionDigits:0});
+  const wait = (v, fn) => v === undefined ? '…' : (v === null ? '—' : fn(v));
   $("#agents").innerHTML = sorted.map((a,i) => `
     <tr>
       <td><span class="rank ${i===0?'top':''}">${i+1}</span>${a.name}</td>
       <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((a.policies||0)/maxP*100).toFixed(0)}%"></div></div><span>${(a.policies||0).toLocaleString()}</span></div></td>
-      <td class="num">${a.cost != null ? '$' + Number(a.cost).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</td>
-      <td class="num">${a.cpa != null ? '$' + Number(a.cpa).toFixed(2) : '—'}</td>
+      <td class="num">${wait(a.cost, money0)}</td>
+      <td class="num">${wait(a.cpa, v => '$' + Number(v).toFixed(2))}</td>
     </tr>`).join("");
 
   // agent count next to the section title
   $("#agentCount").textContent = rows.length ? ` · ${rows.length} agents` : "";
 
-  // pinned totals row (totals come from the report; policies summed from the table)
+  // pinned totals row: policies sum is known immediately; cost/CPA fill in with phase 2.
+  const totPolicies = rows.reduce((s, a) => s + (a.policies || 0), 0);
   const t = lastData && lastData.agent_totals;
-  $("#agentTotals").innerHTML = t ? `
+  $("#agentTotals").innerHTML = `
     <tr>
       <td>Totals</td>
-      <td class="num">${Number(t.policies||0).toLocaleString()}</td>
-      <td class="num">$${Number(t.cost||0).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-      <td class="num">$${Number(t.cpa||0).toFixed(2)}</td>
-    </tr>` : "";
+      <td class="num">${totPolicies.toLocaleString()}</td>
+      <td class="num">${t ? money0(t.cost || 0) : '…'}</td>
+      <td class="num">${t ? '$' + Number(t.cpa || 0).toFixed(2) : '…'}</td>
+    </tr>`;
 }
 
 /* ---- GUI events ---- */

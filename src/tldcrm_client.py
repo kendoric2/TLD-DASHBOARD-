@@ -34,9 +34,10 @@ with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as
 # dashboard. CPA barely moves minute-to-minute, so we cache the result per
 # date-range for a few minutes. The 30s auto-refresh then reuses the cached map
 # (KPIs stay live) instead of re-running the heavy report on every tick.
-_CPA_CACHE = {}                 # {(start, end): (fetched_at_epoch, {name_key: cpa})}
+_CPA_CACHE = {}                 # {(start, end): (fetched_at_epoch, {"by_agent":..., "totals":...})}
 _CPA_CACHE_TTL = 300            # seconds — 5 minutes
-_CPA_LOCK = threading.Lock()    # guards _CPA_CACHE across the dashboard's worker threads
+_CPA_LOCK = threading.Lock()    # guards _CPA_CACHE / _CPA_INFLIGHT across worker threads
+_CPA_INFLIGHT = {}              # {(start, end): Event} — dedupes concurrent fetches of the same range
 
 
 def date_range_for(range_key):
@@ -153,18 +154,42 @@ class TLDCRMClient:
     def agent_cpa(self, start, end):
         """Per-agent CPA + COST plus period totals from report_cpa_agent for the date
         range. Returns {"by_agent": {name_key: {"cpa":..., "cost":...}},
-        "totals": {"cost":..., "sales":..., "cpa":...}}. This report honors
-        date/date_end + date_sold/date_sold_end (NOT start_date/end_date).
+        "totals": {"cost":..., "sales":..., "cpa":...}}.
 
-        Cached per (start, end) for _CPA_CACHE_TTL seconds so the 30s auto-refresh
-        reuses the result instead of re-running this heavy report on every tick."""
+        Cached per (start, end) for _CPA_CACHE_TTL seconds. Concurrent callers for the
+        same range share ONE fetch (so startup warming + the page's lazy load never
+        double-hit this heavy report) — the first caller fetches, the rest wait."""
         cache_key = (start, end)
         now = time.time()
-        with _CPA_LOCK:                                  # serve a fresh cached copy if we have one
+        with _CPA_LOCK:
             hit = _CPA_CACHE.get(cache_key)
-            if hit and now - hit[0] < _CPA_CACHE_TTL:
+            if hit and now - hit[0] < _CPA_CACHE_TTL:    # fresh cached copy
                 return hit[1]
+            ev = _CPA_INFLIGHT.get(cache_key)
+            leader = ev is None
+            if leader:                                   # we own the fetch for this range
+                ev = threading.Event()
+                _CPA_INFLIGHT[cache_key] = ev
 
+        if not leader:                                   # someone else is already fetching — wait for it
+            ev.wait(timeout=120)
+            with _CPA_LOCK:
+                hit = _CPA_CACHE.get(cache_key)
+            return hit[1] if hit else {"by_agent": {}, "totals": {}}
+
+        try:
+            result = self._fetch_agent_cpa(start, end)
+            with _CPA_LOCK:
+                _CPA_CACHE[cache_key] = (time.time(), result)
+            return result
+        finally:
+            with _CPA_LOCK:
+                _CPA_INFLIGHT.pop(cache_key, None)
+            ev.set()                                     # release any waiters
+
+    def _fetch_agent_cpa(self, start, end):
+        """The actual report_cpa_agent call + parse (no caching). Honors
+        date/date_end + date_sold/date_sold_end (NOT start_date/end_date)."""
         s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
         body = {
             "columns": ["agent", "agent_id", "sales", "costs_all", "cpa_cost_calls_all_by_sales"],
@@ -209,16 +234,12 @@ class TLDCRMClient:
             tot = {"cost": tcost, "sales": tsales,
                    "cpa": round(tcost / tsales, 2) if tsales else 0}
 
-        # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the
-        # browser sees. Lets us confirm row count + the exact name format the report returns.
+        # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the browser sees.
         print(f"[agent_cpa] {start}->{end}: {len(rows)} report rows; "
               f"sample agents={[r.get('agent') for r in rows[:5] if isinstance(r, dict)]}",
               file=sys.stderr)
 
-        result = {"by_agent": out, "totals": tot}
-        with _CPA_LOCK:
-            _CPA_CACHE[cache_key] = (now, result)
-        return result
+        return {"by_agent": out, "totals": tot}
 
     def build_dashboard(self, range_key, range_label):
         start, end = date_range_for(range_key)
@@ -233,7 +254,6 @@ class TLDCRMClient:
             "by_plan":    lambda: self._grouped("policies_by_plan", start, end),
             "recent":     lambda: self.run("recent_sales"),
             "agents":     lambda: self.agent_performance(start, end),
-            "agent_cpa":  lambda: self.agent_cpa(start, end),
         }
         results, errors = {}, []
 
@@ -266,33 +286,10 @@ class TLDCRMClient:
             "carrier": r.get("carrier_name") or r.get("carrier"),
         } for r in (results.get("recent") or [])]
 
-        # Merge per-agent CPA + COST (from report_cpa_agent) into the agent rows, matched
-        # by name. Try the full normalized name first, then the loose (first+last) key so
-        # a middle name on either side doesn't break the match.
+        # Agent rows carry name + policies only here. COST/CPA + the Total Spend / Blended
+        # CPA tiles load separately via GET /api/agent_cpa, so the heavy report never blocks
+        # first paint — the page renders immediately and those fields fill in a moment later.
         agents = results.get("agents") or []
-        cpa_data = results.get("agent_cpa") or {}
-        cpa_map = cpa_data.get("by_agent") or {}
-        cpa_totals = cpa_data.get("totals") or {}
-        matched = 0
-        for a in agents:
-            full, loose = _name_keys(a.get("name"))
-            rec = cpa_map.get(full) or cpa_map.get(loose)
-            a["cpa"] = rec["cpa"] if rec else None
-            a["cost"] = rec["cost"] if rec else None
-            if rec:
-                matched += 1
-        print(f"[cpa merge] matched {matched}/{len(agents)} agents; "
-              f"dashboard sample={[a.get('name') for a in agents[:5]]}", file=sys.stderr)
-
-        # Period totals (from the report) for the Total Spend / Blended CPA tiles and
-        # the agent totals row. Policies total is summed from the agent table itself.
-        total_spend = cpa_totals.get("cost") or 0
-        blended_cpa = cpa_totals.get("cpa") or 0
-        agent_totals = {
-            "policies": sum(_num(a.get("policies")) for a in agents),
-            "cost": total_spend,
-            "cpa": blended_cpa,
-        }
 
         data = {
             "demo": False,
@@ -303,14 +300,11 @@ class TLDCRMClient:
                 "billable_leads": billable,
                 "conversion_rate": conv,
                 "avg_gtl_premium": results.get("avg_gtl") or 0,
-                "total_spend": total_spend,
-                "blended_cpa": blended_cpa,
             },
             "by_carrier": results.get("by_carrier") or [],
             "by_plan": results.get("by_plan") or [],
             "recent_sales": recent,
             "agents": agents,
-            "agent_totals": agent_totals,
         }
         if errors:
             data["error"] = "Some metrics didn't load: " + "; ".join(errors)
