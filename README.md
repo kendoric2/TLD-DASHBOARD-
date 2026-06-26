@@ -41,6 +41,10 @@ see a **"SAMPLE DATA"** badge until you add credentials (see *Going live* below)
 You have this on your work Mac. Here's how to run it on a home **Windows** PC and
 keep both machines in sync through GitHub.
 
+> **Never coded on this PC before?** Follow **[`WINDOWS-SETUP.md`](WINDOWS-SETUP.md)** —
+> it's this same process spelled out click-by-click, with download links, which boxes
+> to check, and a success check after every step. The summary below is the short version.
+
 ### One-time setup on the Windows PC
 
 1. **Install Python 3** — download from <https://www.python.org/downloads/>, run the
