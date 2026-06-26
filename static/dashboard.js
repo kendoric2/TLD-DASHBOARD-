@@ -151,6 +151,7 @@ function renderAgents(rows) {
       <td><span class="rank ${i===0?'top':''}">${i+1}</span>${a.name}</td>
       <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((a.policies||0)/maxP*100).toFixed(0)}%"></div></div><span>${(a.policies||0).toLocaleString()}</span></div></td>
       <td class="num">${(a.leads||0).toLocaleString()}</td>
+      <td class="num">${a.cpa != null ? '$' + Number(a.cpa).toFixed(2) : '—'}</td>
     </tr>`).join("");
 }
 

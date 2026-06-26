@@ -13,8 +13,11 @@ Auth: API ID and Key are sent as request headers.
 """
 
 import os
+import sys
 import json
+import time
 import datetime
+import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -23,6 +26,15 @@ import config
 _HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as _f:
     PAYLOADS = json.load(_f)["queries"]
+
+# --- CPA cache ---------------------------------------------------------------
+# report_cpa_agent is a heavy precomputed report and the slowest call in the
+# dashboard. CPA barely moves minute-to-minute, so we cache the result per
+# date-range for a few minutes. The 30s auto-refresh then reuses the cached map
+# (KPIs stay live) instead of re-running the heavy report on every tick.
+_CPA_CACHE = {}                 # {(start, end): (fetched_at_epoch, {name_key: cpa})}
+_CPA_CACHE_TTL = 300            # seconds — 5 minutes
+_CPA_LOCK = threading.Lock()    # guards _CPA_CACHE across the dashboard's worker threads
 
 
 def date_range_for(range_key):
@@ -129,6 +141,59 @@ class TLDCRMClient:
             })
         return agents
 
+    def agent_cpa(self, start, end):
+        """Per-agent CPA (cpa_cost_calls_all_by_sales) from report_cpa_agent for the
+        date range, returned as {name_key: cpa}. This report honors
+        date/date_end + date_sold/date_sold_end (NOT start_date/end_date).
+
+        Cached per (start, end) for _CPA_CACHE_TTL seconds so the 30s auto-refresh
+        reuses the result instead of re-running this heavy report on every tick."""
+        cache_key = (start, end)
+        now = time.time()
+        with _CPA_LOCK:                                  # serve a fresh cached copy if we have one
+            hit = _CPA_CACHE.get(cache_key)
+            if hit and now - hit[0] < _CPA_CACHE_TTL:
+                return hit[1]
+
+        s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
+        body = {
+            "columns": ["agent", "agent_id", "sales", "cpa_cost_calls_all_by_sales"],
+            "limit": 500,
+            "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1,
+        }
+        # Use the same proven request+unwrap path the working probe uses.
+        resp = config.egress_get("report_cpa_agent", body, timeout=max(self.timeout, 90))
+
+        # report_cpa_agent returns {data|results|rows: [...], totals: {...}} (sometimes
+        # wrapped in "response", which egress_get already peels). Pull out the row list.
+        rows = resp if isinstance(resp, list) else []
+        if isinstance(resp, dict):
+            for k in ("results", "data", "rows", "report", "records", "agents"):
+                if isinstance(resp.get(k), list):
+                    rows = resp[k]
+                    break
+
+        out = {}
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            full, loose = _name_keys(r.get("agent"))
+            if not full:
+                continue
+            cpa = _num(r.get("cpa_cost_calls_all_by_sales"))
+            out[full] = cpa
+            out.setdefault(loose, cpa)               # loose alias (drops middle name) as a fallback match
+
+        # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the
+        # browser sees. Lets us confirm row count + the exact name format the report returns.
+        print(f"[agent_cpa] {start}->{end}: {len(rows)} report rows; "
+              f"sample agents={[r.get('agent') for r in rows[:5] if isinstance(r, dict)]}",
+              file=sys.stderr)
+
+        with _CPA_LOCK:
+            _CPA_CACHE[cache_key] = (now, out)
+        return out
+
     def build_dashboard(self, range_key, range_label):
         start, end = date_range_for(range_key)
 
@@ -142,6 +207,7 @@ class TLDCRMClient:
             "by_plan":    lambda: self._grouped("policies_by_plan", start, end),
             "recent":     lambda: self.run("recent_sales"),
             "agents":     lambda: self.agent_performance(start, end),
+            "agent_cpa":  lambda: self.agent_cpa(start, end),
         }
         results, errors = {}, []
 
@@ -176,6 +242,23 @@ class TLDCRMClient:
             "status": r.get("status"),
         } for r in (results.get("recent") or [])]
 
+        # Merge per-agent CPA (from report_cpa_agent) into the agent rows, matched by
+        # name. Try the full normalized name first, then the loose (first+last) key so
+        # a middle name on either side doesn't break the match.
+        agents = results.get("agents") or []
+        cpa_map = results.get("agent_cpa") or {}
+        matched = 0
+        for a in agents:
+            full, loose = _name_keys(a.get("name"))
+            cpa = cpa_map.get(full)
+            if cpa is None:
+                cpa = cpa_map.get(loose)
+            a["cpa"] = cpa
+            if cpa is not None:
+                matched += 1
+        print(f"[cpa merge] matched {matched}/{len(agents)} agents; "
+              f"dashboard sample={[a.get('name') for a in agents[:5]]}", file=sys.stderr)
+
         data = {
             "demo": False,
             "range_label": range_label,
@@ -189,11 +272,27 @@ class TLDCRMClient:
             "by_carrier": results.get("by_carrier") or [],
             "by_plan": results.get("by_plan") or [],
             "recent_sales": recent,
-            "agents": results.get("agents") or [],
+            "agents": agents,
         }
         if errors:
             data["error"] = "Some metrics didn't load: " + "; ".join(errors)
         return data
+
+
+def _name_keys(s):
+    """Return (full, loose) match keys for an agent name so the two reports line up.
+
+    full  = fully normalized 'first ... last'  ('Willis, Jarvis' -> 'jarvis willis')
+    loose = 'first last' only, dropping any middle name/initial, so
+            'Andrew M Giesse' still matches 'Andrew Giesse'."""
+    s = (s or "").strip().lower()
+    if "," in s:                                  # 'Last, First' -> 'First Last'
+        last, first = s.split(",", 1)
+        s = f"{first.strip()} {last.strip()}"
+    toks = s.split()
+    full = " ".join(toks)
+    loose = f"{toks[0]} {toks[-1]}" if len(toks) >= 2 else full
+    return full, loose
 
 
 def _num(v):
