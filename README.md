@@ -11,8 +11,10 @@ credentials to go live.
 
 - **Key Numbers** (six tiles): Policies Sold · Billable Calls · Conversion Rate ·
   Total Spend · Blended CPA · Avg Premium (GTL).
-- **Charts**: Policies by Carrier (each slice in the carrier's brand color) and
-  Policies by Plan Type.
+- **Policies by Carrier**: a vertical bar chart in the carriers' brand colors, with
+  each carrier's total policy count labeled on top of its bar.
+- **Enrollments**: an enrollment tracker grouped by enroller (fronter) — each
+  enroller's count plus the day's total across all enrollers (GTL excluded).
 - **Recent Sales**: Date · Agent · Enroller · Carrier.
 - **Agent Performance**: Agent · Policies Sold · COST · CPA — sortable (click a
   column), scrollable, with a pinned **Totals** row and the agent count by the title.
@@ -101,6 +103,26 @@ TLDDASHBOARD/
   the queries in `egress_payloads.json`, and aggregates the numbers. Issues only GET
   requests — it cannot write to your CRM.
 - **`src/sample_data.py`** — the placeholder numbers shown in demo mode.
+
+## How the key numbers are computed
+
+A few rules keep the counts honest:
+
+- **De-duplication (every pull).** Policy rows are de-duped on a **canonical key**:
+  `policy_id` if present, otherwise `lead_id`. Newer ids (`id`, other `*_id`) are only
+  used to tell apart genuine duplicates — never as the dedupe key unless absolutely
+  necessary. This runs on **every** pull (day, week, half-hour interval, or cache), so
+  the same policy is never counted twice. A single lead with two policies (a cross-sell)
+  correctly counts as two.
+- **GTL is excluded** from Policies Sold and the Enrollments tracker — it's a different
+  product line, so it's filtered out (`EXCLUDED_POLICY_CARRIERS` in `config.py`). It
+  still has its own **Avg Premium (GTL)** tile.
+- **Conversion Rate** matches the CRM's Vendor-CPA "Sales / All Calls" view: it's
+  **Falcon sales ÷ Falcon billable calls**, both taken from `report_cpa_agent` scoped
+  to the Falcon vendor id — not a leads-based ratio.
+- **Billable Calls / COST / CPA / Total Spend / Blended CPA** all come from the
+  `report_cpa_agent` report (calls-based), which is why they load a moment after the
+  rest of the page.
 
 ## How dates work (the canonical rule)
 

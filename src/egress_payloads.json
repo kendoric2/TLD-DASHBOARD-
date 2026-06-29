@@ -24,13 +24,6 @@
       "payload": { "billable": 1, "aggregates": true, "aggregate": true, "columns": ["tql_cnt_lead_id"] }
     },
 
-    "billable_status": {
-      "endpoint": "leads",
-      "date_bounded": true,
-      "date_field": "date_created",
-      "payload": { "billable": 1, "aggregates": true, "group_by": "status_name", "columns": ["status_name", "tql_cnt_lead_id"], "order_by": "tql_cnt_lead_id", "sort": "DESC", "limit": 100 }
-    },
-
     "avg_gtl_premium": {
       "endpoint": "policies",
       "date_bounded": true,
@@ -42,13 +35,6 @@
       "date_bounded": true,
       "label_field": "carrier_name",
       "payload": { "aggregates": true, "group_by": "carrier_name", "columns": ["carrier_name", "tql_cnt_policy_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC" }
-    },
-
-    "policies_by_plan": {
-      "endpoint": "policies",
-      "date_bounded": true,
-      "label_field": "product",
-      "payload": { "aggregates": true, "group_by": "product", "columns": ["product", "tql_cnt_policy_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC" }
     },
 
     "recent_sales": {

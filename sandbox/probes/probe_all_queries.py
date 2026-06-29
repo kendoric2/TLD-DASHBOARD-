@@ -39,7 +39,7 @@ print(r.text[:1400])
 # --- Each dashboard query, parsed ---
 print("\n=== Parsed results per query ===")
 checks = ["policies_count", "billable_leads_count", "avg_gtl_premium",
-          "policies_by_carrier", "policies_by_plan", "agent_policies", "recent_sales"]
+          "policies_by_carrier", "agent_policies", "recent_sales"]
 for q in checks:
     try:
         rows = c.run(q) if q == "recent_sales" else c.run(q, s, e)

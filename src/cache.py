@@ -20,7 +20,7 @@ import datetime
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # src/ -> project root
 CACHE_DIR = os.path.join(_ROOT, "cache")
-SCHEMA_VERSION = 1            # bump this to invalidate every existing cache file at once
+SCHEMA_VERSION = 2            # bump this to invalidate every existing cache file at once
 
 
 def is_final_range(end):
