@@ -107,7 +107,7 @@ function render(d) {
 
   renderKPIs(d.kpis);
   renderCarrierChart("carrier", d.by_carrier);
-  // second card is a "PENDING" placeholder for now — nothing to render there yet
+  renderEnrollments(d.enrollments);
   renderRecent(d.recent_sales);
   renderAgents(d.agents);
 
@@ -205,6 +205,16 @@ function renderCarrierChart(id, rows) {
     },
     plugins: [barTopLabels]
   });
+}
+
+function renderEnrollments(e) {
+  e = e || {total: 0, by_enroller: []};
+  $("#enrollTotal").textContent = (e.total || 0).toLocaleString();
+  const list = e.by_enroller || [];
+  $("#enrollList").innerHTML = list.length
+    ? list.map(g => `
+      <div class="enroll-row"><span class="enroll-name">${g.name ?? g.fronter_id}</span><span class="enroll-count">${(g.count || 0).toLocaleString()}</span></div>`).join("")
+    : '<div class="dash" style="padding:10px 2px">No enrollments yet</div>';
 }
 
 function renderRecent(rows) {

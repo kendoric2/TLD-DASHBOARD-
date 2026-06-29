@@ -83,6 +83,15 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .chart-wrap{position:relative;height:260px}
 .chart-wrap.placeholder{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;font-style:italic}
 
+/* Enrollment tracker (in the card next to Policies by Carrier) */
+.enroll-total{font-size:13px;color:var(--muted);margin:-4px 0 10px}
+.enroll-total b{font-size:26px;color:var(--brand-dark);font-weight:800;letter-spacing:-.5px;margin-left:6px;vertical-align:-2px}
+.enroll-list{max-height:208px;overflow-y:auto}
+.enroll-row{display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
+.enroll-row:last-child{border-bottom:none}
+.enroll-name{color:var(--text)}
+.enroll-count{font-weight:700;color:var(--brand-dark);font-variant-numeric:tabular-nums}
+
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line)}
 th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;user-select:none}

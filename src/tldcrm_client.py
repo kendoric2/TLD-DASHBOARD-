@@ -142,15 +142,9 @@ class TLDCRMClient:
         return out
 
     def policies_sold(self, start, end):
-        """Count of policies sold in the range, DEDUPED by unique id (policy_id, else
-        lead_id) and EXCLUDING carriers in config.EXCLUDED_POLICY_CARRIERS (e.g. GTL — a
-        separate product line). Pulls the actual id rows (+ carrier) instead of a server
-        COUNT, drops excluded carriers, then folds the rest into a set so the same record
-        is never counted twice, even across overlapping or repeated pulls."""
-        rows = self.run("policies_ids", start, end)
-        kept = [r for r in rows if isinstance(r, dict)
-                and str(r.get("carrier_name") or "").strip().upper() not in config.EXCLUDED_POLICY_CARRIERS]
-        return len(dedupe_ids(kept))
+        """Count of policies sold — deduped (policy_id -> lead_id) with GTL excluded.
+        See _kept_policies (shared basis with the enrollment tracker)."""
+        return len(_kept_policies(self.run("policies_ids", start, end)))
 
     def agent_performance(self, start, end):
         agents = []
@@ -343,7 +337,7 @@ class TLDCRMClient:
         # All queries are independent and filtered server-side, so run them
         # concurrently — the dashboard loads in ~one round-trip instead of seven.
         jobs = {
-            "policies":   lambda: self.policies_sold(start, end),
+            "policy_rows": lambda: self.run("policies_ids", start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
             "by_carrier": lambda: self._grouped("policies_by_carrier", start, end),
             "recent":     lambda: self.run("recent_sales"),
@@ -363,7 +357,11 @@ class TLDCRMClient:
                 k, v = fut.result()
                 results[k] = v
 
-        policies = results.get("policies") or 0
+        # One policies pull feeds both: deduped + GTL-excluded rows -> Policies Sold count
+        # and the enrollment tracker (grouped by fronter).
+        kept_policies = _kept_policies(results.get("policy_rows") or [])
+        policies = len(kept_policies)
+        enrollments = enrollment_tracker(kept_policies)
 
         recent = [{
             "date_sold": r.get("date_sold"),
@@ -389,6 +387,7 @@ class TLDCRMClient:
             "by_carrier": results.get("by_carrier") or [],
             "recent_sales": recent,
             "agents": agents,
+            "enrollments": enrollments,
         }
         if errors:
             data["error"] = "Some metrics didn't load: " + "; ".join(errors)
@@ -463,6 +462,39 @@ def dedupe_ids(records):
             if k:
                 keys.add(k)
     return keys
+
+
+def _kept_policies(rows):
+    """Deduped (policy_id -> lead_id) + GTL-excluded policy rows — the shared basis for
+    both Policies Sold and the enrollment tracker. Keeps the first row per unique key."""
+    seen, kept = set(), []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        if str(r.get("carrier_name") or "").strip().upper() in config.EXCLUDED_POLICY_CARRIERS:
+            continue
+        k = _dedupe_key(r)
+        if k and k not in seen:
+            seen.add(k)
+            kept.append(r)
+    return kept
+
+
+def enrollment_tracker(kept_rows):
+    """Group already-deduped, GTL-excluded policy rows by fronter (the enroller). Returns
+    {"total": N, "by_enroller": [{fronter_id, name, count} sorted desc], "no_enroller": M}.
+    Rows with no fronter (self-generated) are counted under no_enroller, not attributed."""
+    by, no_enroller = {}, 0
+    for r in kept_rows:
+        fid = str(r.get("fronter_id") or "").strip()
+        if fid in ("", "0"):
+            no_enroller += 1
+            continue
+        g = by.setdefault(fid, {"fronter_id": fid, "name": None, "count": 0})
+        g["count"] += 1
+        g["name"] = r.get("fronter_name") or g["name"]
+    rows = sorted(by.values(), key=lambda g: (-g["count"], str(g["name"] or "")))
+    return {"total": sum(g["count"] for g in rows), "by_enroller": rows, "no_enroller": no_enroller}
 
 
 def _num(v):

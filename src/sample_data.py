@@ -39,4 +39,18 @@ def get_sample_dashboard(range_label="This Month"):
             {"name": "Aisha Bello", "calls": 298, "talk_time": "9h 05m", "policies": 24, "conversion": 14.6, "cost": 715, "cpa": 29.80},
         ],
         "agent_totals": {"policies": 225, "cost": 5460, "cpa": 24.27},
+        "enrollments": {
+            "total": 29,
+            "no_enroller": 27,
+            "by_enroller": [
+                {"fronter_id": "40067", "name": "Charles, Rony", "count": 7},
+                {"fronter_id": "14847", "name": "Desir, G", "count": 5},
+                {"fronter_id": "38784", "name": "Escoffery, Lashaunah", "count": 5},
+                {"fronter_id": "42283", "name": "Chevelon, Ziea", "count": 4},
+                {"fronter_id": "52081", "name": "Teheran, Eli", "count": 3},
+                {"fronter_id": "51497", "name": "Lozano, Mario", "count": 2},
+                {"fronter_id": "37669", "name": "Desormot, Jean", "count": 1},
+                {"fronter_id": "43148", "name": "Gomez, Carlos", "count": 2},
+            ],
+        },
     }
