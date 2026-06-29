@@ -10,6 +10,7 @@ Uses the date params the report actually honors (from how TLD's own code calls i
     python3 sandbox/probes/probe_cpa.py
 """
 import os
+import datetime
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
 import json
@@ -20,8 +21,8 @@ t = p.t
 config.require_creds()
 
 # ===================== CHANGE THESE, THEN RUN =====================
-START = "2026-06-26"        # <- date range start "YYYY-MM-DD"
-END   = "2026-06-26"        # <- date range end   "YYYY-MM-DD"  (same day = one day)
+START = datetime.date.today().isoformat()   # defaults to today; set "YYYY-MM-DD" to look back
+END   = datetime.date.today().isoformat()
 ROWS  = 300                 # <- max agents to pull back
 SORT_BY = "sales"           # <- sort agents by this column (sales / policies / costs_all)
 # ==================================================================

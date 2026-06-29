@@ -14,6 +14,7 @@ Whichever line equals your CRM's 430 tells us exactly what to point the tile at.
     python3 sandbox/probes/probe_billable_reconcile.py
 """
 import os
+import datetime
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
 import config
@@ -23,8 +24,8 @@ import _probe_lib as p
 config.require_creds()
 
 # ===================== CHANGE THESE, THEN RUN =====================
-START = "2026-06-26"        # match the dashboard range you're comparing (default = today)
-END   = "2026-06-26"
+START = datetime.date.today().isoformat()   # defaults to today; set "YYYY-MM-DD" to look back
+END   = datetime.date.today().isoformat()
 # ==================================================================
 
 su, eu = t._us(START), t._us(END)

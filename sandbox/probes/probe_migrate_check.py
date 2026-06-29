@@ -12,6 +12,7 @@ spurious diffs.
     python3 sandbox/probes/probe_migrate_check.py
 """
 import os
+import datetime
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
 import config
@@ -21,8 +22,8 @@ import _probe_lib as p
 config.require_creds()
 
 # ===================== CHANGE THESE, THEN RUN =====================
-START = "2026-06-25"        # a past day = stable comparison
-END   = "2026-06-25"
+START = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()   # defaults to a recent past day; set "YYYY-MM-DD" to pin it
+END   = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
 # ==================================================================
 
 su, eu = t._us(START), t._us(END)

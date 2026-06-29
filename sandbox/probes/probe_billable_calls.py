@@ -11,6 +11,7 @@ equals your CRM's 430:
     python3 sandbox/probes/probe_billable_calls.py
 """
 import os
+import datetime
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
 import config
@@ -20,8 +21,8 @@ import _probe_lib as p
 config.require_creds()
 
 # ===================== CHANGE THESE, THEN RUN =====================
-START = "2026-06-26"        # match the CRM window you're comparing (default = today)
-END   = "2026-06-26"
+START = datetime.date.today().isoformat()   # defaults to today; set "YYYY-MM-DD" to look back
+END   = datetime.date.today().isoformat()
 # ==================================================================
 
 s0, e1 = f"{START} 00:00:00", f"{END} 23:59:59"

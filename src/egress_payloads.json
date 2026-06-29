@@ -11,6 +11,12 @@
       "payload": { "aggregates": true, "aggregate": true, "columns": ["tql_cnt_policy_id"] }
     },
 
+    "policies_ids": {
+      "endpoint": "policies",
+      "date_bounded": true,
+      "payload": { "columns": ["policy_id", "lead_id"], "limit": 50000 }
+    },
+
     "billable_leads_count": {
       "endpoint": "leads",
       "date_bounded": true,

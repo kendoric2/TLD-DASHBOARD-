@@ -126,7 +126,7 @@ function renderKPIs(k) {
     {label:"Billable Calls",    value: wait(k.billable_calls, fmt),
        note:"Billable dial/transfer calls"},
     {label:"Conversion Rate",   value: (k.conversion_rate ?? 0) + "%",
-       note:"Billable leads ending Active or Sale"},
+       note:"Falcon sales ÷ all calls"},
     {label:"Total Spend",       value: wait(k.total_spend, money0),
        note:"Lead cost this period"},
     {label:"Blended CPA",       value: wait(k.blended_cpa, v => "$" + Number(v).toFixed(2)),

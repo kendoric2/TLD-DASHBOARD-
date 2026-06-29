@@ -8,6 +8,7 @@ Whatever you set goes into the JSON body sent to the endpoint; the script prints
 that exact JSON, then shows the matching rows as a table.
 """
 import os
+import datetime
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
 import json
@@ -31,8 +32,8 @@ COLUMNS  = ["lead_id", "date_created", "status_name", "vendor_id",   # <- column
 
 DATE_FIELD = "date_created"                # <- which date column the range filters on
                                            #    leads -> date_created (or date_assigned);  policies -> date_sold
-START    = "2026-06-25"                    # <- start date "YYYY-MM-DD"   (set both "" for no date filter)
-END      = "2026-06-25"                    # <- end date   "YYYY-MM-DD"
+START = datetime.date.today().isoformat()   # defaults to today; set "YYYY-MM-DD" to look back
+END   = datetime.date.today().isoformat()
 
 ROWS     = 25                              # <- max rows to return
 MASK_SENSITIVE = True                      # <- True hides ssn/dob/card/etc.; False shows raw

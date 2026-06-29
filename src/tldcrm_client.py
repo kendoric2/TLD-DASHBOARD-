@@ -15,6 +15,7 @@ Auth: API ID and Key are sent as request headers.
 """
 
 import os
+import re
 import sys
 import json
 import time
@@ -140,6 +141,14 @@ class TLDCRMClient:
                 out.append({"label": label, "count": _num(row.get("tql_cnt_policy_id"))})
         return out
 
+    def policies_sold(self, start, end):
+        """Count of policies sold in the range, DEDUPED by unique id. Pulls the actual
+        policy_id + lead_id rows (not a server COUNT) and folds them into a set keyed by
+        policy_id, falling back to lead_id when a row has no policy_id — so the same record
+        is never counted twice, even across overlapping or repeated pulls."""
+        rows = self.run("policies_ids", start, end)
+        return len(dedupe_ids(rows))
+
     def agent_performance(self, start, end):
         agents = []
         for row in self.run("agent_policies", start, end):
@@ -151,6 +160,32 @@ class TLDCRMClient:
                 "policies": _num(row.get("tql_cnt_policy_id")),
             })
         return agents
+
+    def vendor_performance(self, start, end):
+        """Per-vendor numbers from the Vendor CPA report (vendorperformance) for the date
+        range. Returns a list of {vendor_id, vendor, leads, billable, sales, policies,
+        spend}. This is the CRM's UI report: rows arrive under a "vendor" key with values
+        wrapped in HTML links, so we strip the tags to get raw numbers. Note: TLD computes
+        this report on a delay, so it can trail the live CRM by a few minutes (the ratio
+        Sales/Billable stays accurate as of its last refresh)."""
+        s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
+        body = {"date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1, "limit": 200}
+        resp = config.egress_get("vendorperformance", body, timeout=max(self.timeout, 60))
+        rows = resp.get("vendor") if isinstance(resp, dict) else (resp if isinstance(resp, list) else [])
+        out = []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            out.append({
+                "vendor_id": _strip_tags(r.get("ID")),
+                "vendor":    _strip_tags(r.get("Vendor")),
+                "leads":     _clean_num(r.get("Leads")),
+                "billable":  _clean_num(r.get("Billable")),   # "All Calls" on the Vendor CPA screen
+                "sales":     _clean_num(r.get("Sales")),
+                "policies":  _clean_num(r.get("Policies")),
+                "spend":     _clean_num(r.get("Spend")),
+            })
+        return out
 
     def agent_cpa(self, start, end):
         """Per-agent CPA + COST plus period totals from report_cpa_agent for the date
@@ -270,8 +305,8 @@ class TLDCRMClient:
         # All queries are independent and filtered server-side, so run them
         # concurrently — the dashboard loads in ~one round-trip instead of seven.
         jobs = {
-            "policies":   lambda: _first_num(self.run("policies_count", start, end)),
-            "billable":   lambda: self.run("billable_status", start, end),
+            "policies":   lambda: self.policies_sold(start, end),
+            "vendors":    lambda: self.vendor_performance(start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
             "by_carrier": lambda: self._grouped("policies_by_carrier", start, end),
             "by_plan":    lambda: self._grouped("policies_by_plan", start, end),
@@ -294,13 +329,14 @@ class TLDCRMClient:
 
         policies = results.get("policies") or 0
 
-        # Billable leads (all vendors) + conversion: a billable lead is
-        # "converted" if its status ended in Active or Sale.
-        billable_rows = results.get("billable") or []
-        billable = sum(_num(r.get("tql_cnt_lead_id")) for r in billable_rows)
-        converted = sum(_num(r.get("tql_cnt_lead_id")) for r in billable_rows
-                        if str(r.get("status_name") or "").strip().lower() in config.CONVERTED_STATUSES)
-        conv = round(converted / billable * 100, 1) if billable else 0.0
+        # Conversion rate = Sales / All Calls (= billable calls) for FALCON, the pay-per-
+        # call vendor, from the Vendor CPA report (vendorperformance). Scoped to FALCON for
+        # now; future: any vendor with >3 billable policies/day. (This report can trail the
+        # live CRM by a few minutes, but the ratio is accurate as of its last refresh.)
+        vendors = results.get("vendors") or []
+        falcon = next((v for v in vendors
+                       if str(v.get("vendor_id")) == str(config.FALCON_VENDOR_ID)), None)
+        conv = round(falcon["sales"] / falcon["billable"] * 100, 1) if (falcon and falcon.get("billable")) else 0.0
 
         recent = [{
             "date_sold": r.get("date_sold"),
@@ -349,6 +385,58 @@ def _name_keys(s):
     full = " ".join(toks)
     loose = f"{toks[0]} {toks[-1]}" if len(toks) >= 2 else full
     return full, loose
+
+
+def _strip_tags(v):
+    """Drop HTML tags — the vendor report wraps cell values in <a> links."""
+    return re.sub(r"<[^>]+>", "", str(v if v is not None else "")).strip()
+
+
+def _clean_num(v):
+    """Parse a number from a possibly HTML/$/comma/%-wrapped cell -> int/float, else 0."""
+    s = re.sub(r"<[^>]+>", "", str(v if v is not None else ""))
+    s = s.replace(",", "").replace("$", "").replace("%", "").strip()
+    try:
+        f = float(s)
+    except ValueError:
+        return 0
+    return int(f) if f.is_integer() else f
+
+
+# The dedupe key is ALWAYS canonical: policy_id first, then lead_id. Every other id
+# (id, *_id) is NOT part of the key — it only rides along to differentiate records on
+# inspection. We use another id as the key ONLY if a record has neither canonical id
+# (absolutely necessary, so the row still dedupes instead of being dropped).
+CANONICAL_IDS = ["policy_id", "lead_id"]
+_EMPTY_IDS = (None, "", "0", 0)
+
+
+def _dedupe_key(rec):
+    """Unique key: policy_id, else lead_id — the canonical keys, in that order. Only if
+    BOTH are absent does it fall back to any other *_id / id, so a record without a
+    canonical id still dedupes rather than vanishing. Namespaced (field:value) so id
+    spaces never collide. None / "" / "0" / 0 count as 'no id'."""
+    for field in CANONICAL_IDS:                      # always: policy_id -> lead_id
+        v = rec.get(field)
+        if v not in _EMPTY_IDS:
+            return f"{field}:{v}"
+    for field in sorted(rec):                        # last resort only (no canonical id)
+        if (field == "id" or field.endswith("_id")) and rec.get(field) not in _EMPTY_IDS:
+            return f"{field}:{rec[field]}"
+    return None
+
+
+def dedupe_ids(records):
+    """Fold records into a SET of unique keys (policy_id-else-lead_id). The same policy
+    (or lead) only ever lands once, so len() can't double-count — across one pull or many.
+    A lead with two policies yields two keys; the same lead with no policy yields one."""
+    keys = set()
+    for r in records:
+        if isinstance(r, dict):
+            k = _dedupe_key(r)
+            if k:
+                keys.add(k)
+    return keys
 
 
 def _num(v):

@@ -48,7 +48,7 @@ def as_rows(resp):
         return resp, None
     if isinstance(resp, dict):
         totals = resp.get("totals") if isinstance(resp.get("totals"), dict) else None
-        for k in ("results", "data", "rows", "report", "records", "agents"):
+        for k in ("results", "data", "rows", "report", "records", "agents", "vendor"):
             if isinstance(resp.get(k), list):
                 return resp[k], totals
         return [], totals
