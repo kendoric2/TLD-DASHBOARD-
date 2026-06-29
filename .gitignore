@@ -7,6 +7,9 @@ policy_*.txt
 *.xlsx
 egress_columns.xlsx
 
+# Internal blueprint / docs — kept locally, not committed
+docs/
+
 # Python
 __pycache__/
 *.pyc
