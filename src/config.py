@@ -7,7 +7,10 @@ from here instead of re-reading os.environ or re-writing unwrap()/get() in
 every file.
 """
 import os
+import time
 import requests
+
+import metrics
 
 try:
     from dotenv import load_dotenv
@@ -72,7 +75,22 @@ def unwrap(payload):
 
 
 def egress_get(path, body=None, timeout=TIMEOUT):
-    """GET /api/egress/<path> with an optional JSON body; returns unwrapped JSON."""
-    r = requests.get(f"{TLD_BASE_URL}/api/egress/{path.lstrip('/')}",
-                     headers=HEADERS, json=body, timeout=timeout)
+    """GET /api/egress/<path> with an optional JSON body; returns unwrapped JSON.
+    Every call is recorded to logs/egress.csv via metrics."""
+    start = end = None
+    if isinstance(body, dict):
+        d0 = body.get("date") or body.get("date_created")
+        d1 = body.get("date_end") or body.get("date_created_end")
+        if d0 and d1:
+            start, end = str(d0)[:10], str(d1)[:10]
+    t0 = time.time()
+    try:
+        r = requests.get(f"{TLD_BASE_URL}/api/egress/{path.lstrip('/')}",
+                         headers=HEADERS, json=body, timeout=timeout)
+    except Exception:
+        metrics.log(path, start=start, end=end, source="live", status="ERR",
+                    ms=int((time.time() - t0) * 1000))
+        raise
+    metrics.log(path, start=start, end=end, source="live", status=r.status_code,
+                ms=int((time.time() - t0) * 1000))
     return unwrap(r.json())

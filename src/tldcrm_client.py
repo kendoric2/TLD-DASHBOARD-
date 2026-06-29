@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
 import cache
+import metrics
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as _f:
@@ -112,7 +113,15 @@ class TLDCRMClient:
         endpoint, body = self._payload(query_name, start, end)
         url = f"{self.base_url}/api/egress/{endpoint.lstrip('/')}"
         # GET with a JSON body — egress is read-only and the API key allows GET.
-        resp = self.session.request("GET", url, json=body, timeout=self.timeout)
+        t0 = time.time()
+        try:
+            resp = self.session.request("GET", url, json=body, timeout=self.timeout)
+        except Exception:
+            metrics.log(endpoint, query=query_name, start=start, end=end,
+                        source="live", status="ERR", ms=int((time.time() - t0) * 1000))
+            raise
+        metrics.log(endpoint, query=query_name, start=start, end=end,
+                    source="live", status=resp.status_code, ms=int((time.time() - t0) * 1000))
         resp.raise_for_status()
         return self._rows(resp.json())
 
@@ -197,6 +206,7 @@ class TLDCRMClient:
         with _CPA_LOCK:
             hit = _CPA_CACHE.get(cache_key)
             if hit and now - hit[0] < _CPA_CACHE_TTL:    # fresh in-memory copy
+                metrics.log("agent_cpa", start=start, end=end, source="mem-cache")
                 return hit[1]
 
         # Disk cache: a range that ended before today is FINAL — its numbers never

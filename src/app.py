@@ -23,6 +23,7 @@ import webbrowser
 from flask import Flask, jsonify, render_template, request
 
 import config
+import cache
 from sample_data import get_sample_dashboard
 
 # date_range_for only reads the JSON template (no credentials needed); used so
@@ -133,4 +134,5 @@ if __name__ == "__main__":
     # Warm the heavy CPA report for the default range in the background so the first view is fast.
     if config.have_creds():
         threading.Thread(target=_warm_cpa_cache, daemon=True).start()
+    cache.snapshot()   # refresh logs/cache_snapshot.csv to reflect the current cache
     app.run(host="127.0.0.1", port=port, debug=False)

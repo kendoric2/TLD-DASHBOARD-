@@ -10,6 +10,9 @@ egress_columns.xlsx
 # Internal blueprint / docs — kept locally, not committed
 docs/
 
+# Logs / metrics — local operational data, not committed
+logs/
+
 # Python
 __pycache__/
 *.pyc
