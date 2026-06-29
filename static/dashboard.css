@@ -112,6 +112,10 @@ tbody tr:hover{background:#F7FAFD}
 .pill.submitted{background:#E8ECF5;color:#182A54}
 .dash{color:var(--muted)}
 
+/* Recent Sales: group dividers so each commission stays tied to its name block */
+.col-sep{border-right:1px solid var(--line);padding-right:18px}
+.col-sep + th,.col-sep + td{padding-left:18px}
+
 /* Scrollable Agent Performance: fixed height, sticky header + sticky totals row */
 .table-scroll{max-height:480px;overflow-y:auto}
 .table-scroll thead th{position:sticky;top:0;background:var(--card);z-index:2;box-shadow:inset 0 -1px 0 var(--line)}

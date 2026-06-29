@@ -228,8 +228,8 @@ function renderRecent(rows) {
     return `
     <tr>
       <td>${date}</td>
-      <td>${r.agent ?? ""}</td><td class="num">${money(r.agent_commission)}</td>
-      <td>${enroller}</td><td class="num">${money(r.fronter_commission)}</td>
+      <td>${r.agent ?? ""}</td><td class="num col-sep">${money(r.agent_commission)}</td>
+      <td>${enroller}</td><td class="num col-sep">${money(r.fronter_commission)}</td>
       <td>${r.carrier ?? ""}</td>
     </tr>`;
   }).join("");
