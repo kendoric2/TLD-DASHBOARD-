@@ -40,7 +40,7 @@
     "recent_sales": {
       "endpoint": "policies",
       "date_bounded": false,
-      "payload": { "sold": 1, "columns": ["date_sold", "agent_name", "fronter_name", "carrier_name"], "order_by": "date_sold", "sort": "DESC", "limit": 12 }
+      "payload": { "sold": 1, "columns": ["date_sold", "agent_name", "commission_paid", "fronter_name", "commission_paid_fronter", "carrier_name"], "order_by": "date_sold", "sort": "DESC", "limit": 12 }
     },
 
     "agent_policies": {

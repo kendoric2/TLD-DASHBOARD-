@@ -218,13 +218,19 @@ function renderEnrollments(e) {
 }
 
 function renderRecent(rows) {
+  // commission is always set before submission, so a blank means "not in this pull" → em dash
+  const money = v => (v === null || v === undefined || v === "")
+    ? '<span class="dash">—</span>'
+    : '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
   $("#recent").innerHTML = (rows || []).map(r => {
     const date = r.date_sold ? String(r.date_sold).split(" ")[0] : "";
     const enroller = r.enroller ? r.enroller : '<span class="dash">—</span>';
     return `
     <tr>
-      <td>${date}</td><td>${r.agent ?? ""}</td>
-      <td>${enroller}</td><td>${r.carrier ?? ""}</td>
+      <td>${date}</td>
+      <td>${r.agent ?? ""}</td><td class="num">${money(r.agent_commission)}</td>
+      <td>${enroller}</td><td class="num">${money(r.fronter_commission)}</td>
+      <td>${r.carrier ?? ""}</td>
     </tr>`;
   }).join("");
 }

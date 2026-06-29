@@ -366,7 +366,9 @@ class TLDCRMClient:
         recent = [{
             "date_sold": r.get("date_sold"),
             "agent": r.get("agent_name") or r.get("agent"),
+            "agent_commission": _num(r.get("commission_paid")),
             "enroller": r.get("fronter_name") or r.get("fronter"),
+            "fronter_commission": _num(r.get("commission_paid_fronter")),
             "carrier": r.get("carrier_name") or r.get("carrier"),
         } for r in (results.get("recent") or [])]
 
