@@ -81,6 +81,7 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
   padding:18px;box-shadow:var(--shadow)}
 .card h3{margin:0 0 14px;font-size:15px;color:var(--brand-dark)}
 .chart-wrap{position:relative;height:260px}
+.chart-wrap.placeholder{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;font-style:italic}
 
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line)}

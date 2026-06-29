@@ -312,7 +312,6 @@ class TLDCRMClient:
             "vendors":    lambda: self.vendor_performance(start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
             "by_carrier": lambda: self._grouped("policies_by_carrier", start, end),
-            "by_plan":    lambda: self._grouped("policies_by_plan", start, end),
             "recent":     lambda: self.run("recent_sales"),
             "agents":     lambda: self.agent_performance(start, end),
         }
@@ -363,7 +362,6 @@ class TLDCRMClient:
                 "avg_gtl_premium": results.get("avg_gtl") or 0,
             },
             "by_carrier": results.get("by_carrier") or [],
-            "by_plan": results.get("by_plan") or [],
             "recent_sales": recent,
             "agents": agents,
         }

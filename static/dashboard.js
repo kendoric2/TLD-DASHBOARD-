@@ -105,8 +105,8 @@ function render(d) {
   document.querySelectorAll(".rangeLabel").forEach(e => e.textContent = d.range_label);
 
   renderKPIs(d.kpis);
-  renderDoughnut("carrier", d.by_carrier);
-  renderBar("product", d.by_plan);
+  renderCarrierChart("carrier", d.by_carrier);
+  // second card is a "PENDING" placeholder for now — nothing to render there yet
   renderRecent(d.recent_sales);
   renderAgents(d.agents);
 
@@ -163,28 +163,46 @@ function carrierColor(label, i) {
   return CARRIER_FALLBACK[i % CARRIER_FALLBACK.length];
 }
 
-function renderDoughnut(id, rows) {
-  rows = rows || [];
-  charts[id]?.destroy();
-  charts[id] = new Chart(document.getElementById(id), {
-    type:'doughnut',
-    data:{labels: rows.map(r=>r.label),
-      datasets:[{data: rows.map(r=>r.count),
-        backgroundColor: rows.map((r,i)=>carrierColor(r.label,i)), borderWidth:0}]},
-    options:{cutout:'62%', plugins:{legend:{position:'right', labels:{boxWidth:12, font:{size:12}}}},
-      maintainAspectRatio:false}
-  });
-}
+// Draws the value on top of each vertical bar (small custom plugin — no extra CDN).
+const barTopLabels = {
+  id: "barTopLabels",
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data) return;
+    ctx.save();
+    ctx.fillStyle = C("--brand-dark");
+    ctx.font = '700 13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    meta.data.forEach((bar, i) => {
+      const v = chart.data.datasets[0].data[i];
+      if (v != null) ctx.fillText(Number(v).toLocaleString(), bar.x, bar.y - 4);
+    });
+    ctx.restore();
+  }
+};
 
-function renderBar(id, rows) {
+// Policies by Carrier — vertical bars in each carrier's brand color, total on top.
+function renderCarrierChart(id, rows) {
   rows = rows || [];
   charts[id]?.destroy();
   charts[id] = new Chart(document.getElementById(id), {
-    type:'bar',
-    data:{labels: rows.map(r=>r.label),
-      datasets:[{data: rows.map(r=>r.count), backgroundColor:C('--brand'), borderRadius:6, barThickness:46}]},
-    options:{indexAxis:'y', plugins:{legend:{display:false}},
-      scales:{x:{grid:{color:C('--line')}}, y:{grid:{display:false}}}, maintainAspectRatio:false}
+    type: "bar",
+    data: { labels: rows.map(r => r.label),
+      datasets: [{ data: rows.map(r => r.count),
+        backgroundColor: rows.map((r, i) => carrierColor(r.label, i)),
+        borderRadius: 6, maxBarThickness: 70 }] },
+    options: {
+      layout: { padding: { top: 24 } },                 // headroom for the top labels
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, grid: { color: C("--line") }, ticks: { precision: 0 } }
+      },
+      maintainAspectRatio: false
+    },
+    plugins: [barTopLabels]
   });
 }
 

@@ -21,11 +21,6 @@ def get_sample_dashboard(range_label="This Month"):
             {"label": "WellCare", "count": 28},
             {"label": "Other", "count": 19},
         ],
-        "by_plan": [
-            {"label": "Medicare Advantage", "count": 186},
-            {"label": "Medicare Supplement", "count": 84},
-            {"label": "Prescription Drug (PDP)", "count": 42},
-        ],
         "recent_sales": [
             {"date_sold": "Jun 24", "agent": "Maria Alvarez", "enroller": "Carlos Ruiz", "carrier": "Aetna"},
             {"date_sold": "Jun 24", "agent": "David Chen", "enroller": "Tina Brooks", "carrier": "UnitedHealthcare"},
