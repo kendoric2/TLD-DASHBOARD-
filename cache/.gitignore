@@ -1,0 +1,4 @@
+# Local cache of FINAL (past) date ranges — derived data, never committed.
+# Keeps the folder in the repo but ignores everything written into it.
+*
+!.gitignore

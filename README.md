@@ -76,6 +76,7 @@ TLDDASHBOARD/
 │   ├── start.command        # double-click to run (opens Terminal)
 │   └── iHealth Dashboard.app # double-click to run (no Terminal)
 ├── archive/                 # older/superseded scripts, kept for reference (unused)
+├── cache/                   # saved results for past (final) date ranges — git-ignored
 ├── egress_columns.xlsx      # reference: every enabled endpoint's columns + a sample value
 ├── push_to_github.command   # helper: commit + push with a double-click
 ├── requirements.txt         # Python dependencies
@@ -123,6 +124,14 @@ CPA — loads right after via `/api/agent_cpa`, so those fields show a brief "�
 fill in. That report is **cached for 5 minutes** per date range and **pre-warmed at
 startup**, and concurrent requests for the same range share a single fetch, so after
 the first view it's effectively instant (the 30-second auto-refresh reuses the cache).
+
+**Historical ranges are cached to disk.** Any date range that *ends before today* is
+final — its numbers can't change — so the first time it's computed the result is saved
+to **`cache/`** and reused on every later run, even after a restart, with **no API call
+at all**. Ranges that include today are never disk-cached (today's numbers are still
+moving), so they always show the latest. This is handled in `src/cache.py`; to force a
+rebuild, delete the relevant file in `cache/` (or the whole folder — it regenerates on
+demand), or bump `SCHEMA_VERSION` in `cache.py` to invalidate everything at once.
 
 ## Probe scripts — what they are and when to use them
 

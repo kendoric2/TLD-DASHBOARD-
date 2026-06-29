@@ -24,6 +24,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
+import cache
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as _f:
@@ -163,8 +164,18 @@ class TLDCRMClient:
         now = time.time()
         with _CPA_LOCK:
             hit = _CPA_CACHE.get(cache_key)
-            if hit and now - hit[0] < _CPA_CACHE_TTL:    # fresh cached copy
+            if hit and now - hit[0] < _CPA_CACHE_TTL:    # fresh in-memory copy
                 return hit[1]
+
+        # Disk cache: a range that ended before today is FINAL — its numbers never
+        # change, so serve it from cache/ forever and never re-hit the API.
+        disk = cache.load("agent_cpa", start, end)
+        if disk is not None:
+            with _CPA_LOCK:
+                _CPA_CACHE[cache_key] = (now, disk)
+            return disk
+
+        with _CPA_LOCK:
             ev = _CPA_INFLIGHT.get(cache_key)
             leader = ev is None
             if leader:                                   # we own the fetch for this range
@@ -179,6 +190,7 @@ class TLDCRMClient:
 
         try:
             result = self._fetch_agent_cpa(start, end)
+            cache.save("agent_cpa", start, end, result)  # persist if the range is final
             with _CPA_LOCK:
                 _CPA_CACHE[cache_key] = (time.time(), result)
             return result
@@ -248,6 +260,13 @@ class TLDCRMClient:
     def build_dashboard(self, range_key, range_label):
         start, end = date_range_for(range_key)
 
+        # Disk cache: a fully-past range is final, so reuse the saved result and skip
+        # every API call. Ranges that include today fall through and load live.
+        cached = cache.load("dashboard", start, end)
+        if cached is not None:
+            cached["range_label"] = range_label
+            return cached
+
         # All queries are independent and filtered server-side, so run them
         # concurrently — the dashboard loads in ~one round-trip instead of seven.
         jobs = {
@@ -311,6 +330,8 @@ class TLDCRMClient:
         }
         if errors:
             data["error"] = "Some metrics didn't load: " + "; ".join(errors)
+        else:
+            cache.save("dashboard", start, end, data)   # persist clean results for final ranges
         return data
 
 
