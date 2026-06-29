@@ -288,12 +288,47 @@ class TLDCRMClient:
                    "cpa": round(tcost / tsales, 2) if tsales else 0,
                    "billable_calls": tcalls}
 
+        # Conversion = FALCON Sales / billable calls (the CRM 'Sales / All Calls %').
+        # Isolated so a hiccup here never wipes the COST/CPA tiles.
+        try:
+            tot["conversion"] = self._falcon_conversion(start, end)
+        except Exception:
+            tot["conversion"] = 0.0
+
         # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the browser sees.
         print(f"[agent_cpa] {start}->{end}: {len(rows)} report rows; "
               f"sample agents={[r.get('agent') for r in rows[:5] if isinstance(r, dict)]}",
               file=sys.stderr)
 
         return {"by_agent": out, "totals": tot}
+
+    def _falcon_conversion(self, start, end):
+        """Conversion = Sales / billable CALLS for FALCON, from report_cpa_agent scoped to
+        the Falcon vendor — matches the CRM Vendor CPA 'Sales / All Calls %' (whose 'All
+        Calls' column is the billable-call count, = calls_billable). Note: vendorperformance
+        'Billable' counts billable LEADS, not calls, which is why it ran high."""
+        s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
+        body = {"columns": ["sales", "calls_billable"], "vendor_id": config.FALCON_VENDOR_ID,
+                "limit": 2000, "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1}
+        resp = config.egress_get("report_cpa_agent", body, timeout=max(self.timeout, 90))
+        rows, totals = [], {}
+        if isinstance(resp, dict):
+            for k in ("results", "data", "rows", "report", "records", "agents"):
+                if isinstance(resp.get(k), list):
+                    rows = resp[k]
+                    break
+            if isinstance(resp.get("totals"), dict):
+                totals = resp["totals"]
+        elif isinstance(resp, list):
+            rows = resp
+
+        def _t(col):
+            if totals.get(col) not in (None, ""):
+                return _num(totals.get(col))
+            return sum(_num(r.get(col)) for r in rows if isinstance(r, dict))
+
+        sales, calls = _t("sales"), _t("calls_billable")
+        return round(sales / calls * 100, 1) if calls else 0.0
 
     def build_dashboard(self, range_key, range_label):
         start, end = date_range_for(range_key)
@@ -309,7 +344,6 @@ class TLDCRMClient:
         # concurrently — the dashboard loads in ~one round-trip instead of seven.
         jobs = {
             "policies":   lambda: self.policies_sold(start, end),
-            "vendors":    lambda: self.vendor_performance(start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
             "by_carrier": lambda: self._grouped("policies_by_carrier", start, end),
             "recent":     lambda: self.run("recent_sales"),
@@ -331,15 +365,6 @@ class TLDCRMClient:
 
         policies = results.get("policies") or 0
 
-        # Conversion rate = Sales / All Calls (= billable calls) for FALCON, the pay-per-
-        # call vendor, from the Vendor CPA report (vendorperformance). Scoped to FALCON for
-        # now; future: any vendor with >3 billable policies/day. (This report can trail the
-        # live CRM by a few minutes, but the ratio is accurate as of its last refresh.)
-        vendors = results.get("vendors") or []
-        falcon = next((v for v in vendors
-                       if str(v.get("vendor_id")) == str(config.FALCON_VENDOR_ID)), None)
-        conv = round(falcon["sales"] / falcon["billable"] * 100, 1) if (falcon and falcon.get("billable")) else 0.0
-
         recent = [{
             "date_sold": r.get("date_sold"),
             "agent": r.get("agent_name") or r.get("agent"),
@@ -358,8 +383,8 @@ class TLDCRMClient:
             "date_range": {"start": start, "end": end},
             "kpis": {
                 "policies_sold": policies,
-                "conversion_rate": conv,          # still computed from billable leads (denominator)
                 "avg_gtl_premium": results.get("avg_gtl") or 0,
+                # conversion_rate loads in phase 2 (it needs the heavy report) — see /api/agent_cpa
             },
             "by_carrier": results.get("by_carrier") or [],
             "recent_sales": recent,

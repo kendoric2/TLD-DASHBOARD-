@@ -52,9 +52,22 @@ for r in vendors:
 fal = [r for r in vendors
        if "14646" in strip(r.get("ID", "")) or "FALCON" in strip(r.get("Vendor", "")).upper()]
 if fal:
+    f = fal[0]
     print("\n=== FALCON (14646) — full row ===")
-    for k, v in fal[0].items():
+    for k, v in f.items():
         print(f"   {strip(k):32} = {strip(v)}")
 
-print("\nTell me which fields are All Calls, Sales, and Sales/All Calls % (or I'll just")
-print("compute Sales / All Calls from those two). Then I wire Conversion to it.")
+    def num(v):
+        d = re.sub(r"[^0-9.]", "", strip(v))
+        return float(d) if d else 0.0
+    s, b, l = num(f.get("Sales")), num(f.get("Billable")), num(f.get("Leads"))
+    print("\n--- conversion candidates for FALCON ---")
+    print(f"   Sales={s:.0f}   Billable={b:.0f}   Leads={l:.0f}")
+    if b:
+        print(f"   Sales / Billable = {s/b*100:.1f}%   <- what the dashboard shows now")
+    if l:
+        print(f"   Sales / Leads    = {s/l*100:.1f}%")
+
+print("\nNow tell me what your CRM's Vendor CPA shows for FALCON RIGHT NOW:")
+print("   Sales, All Calls, Billable Calls, and the Sales / All Calls %.")
+print("With both sides side by side I can match the exact numerator/denominator.")

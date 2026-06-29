@@ -76,6 +76,7 @@ function applyCPA(cpa) {
   lastData.kpis.total_spend = tot.cost ?? 0;
   lastData.kpis.blended_cpa = tot.cpa ?? 0;
   lastData.kpis.billable_calls = tot.billable_calls ?? 0;
+  lastData.kpis.conversion_rate = tot.conversion ?? 0;
   lastData.agent_totals = {
     policies: (lastData.agents || []).reduce((s, a) => s + (a.policies || 0), 0),
     cost: tot.cost ?? 0,
@@ -125,8 +126,8 @@ function renderKPIs(k) {
     {label:"Policies Sold",     value: fmt(k.policies_sold)},
     {label:"Billable Calls",    value: wait(k.billable_calls, fmt),
        note:"Billable dial/transfer calls"},
-    {label:"Conversion Rate",   value: (k.conversion_rate ?? 0) + "%",
-       note:"Falcon sales ÷ all calls"},
+    {label:"Conversion Rate",   value: wait(k.conversion_rate, v => v + "%"),
+       note:"Falcon sales ÷ billable calls"},
     {label:"Total Spend",       value: wait(k.total_spend, money0),
        note:"Lead cost this period"},
     {label:"Blended CPA",       value: wait(k.blended_cpa, v => "$" + Number(v).toFixed(2)),
