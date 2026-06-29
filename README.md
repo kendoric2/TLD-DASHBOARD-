@@ -19,7 +19,7 @@ credentials to go live.
 - A **date-range selector** (defaults to **Today**) and a **30-second auto-refresh**
   toggle in the header.
 
-## Quick start (Mac / general)
+## Quick start
 
 ```bash
 # 1. Install dependencies (first time only)
@@ -36,88 +36,19 @@ Prefer not to use the terminal? Double-click **`bin/start.command`** (opens a
 Terminal window) or **`bin/iHealth Dashboard.app`** (runs in the background). You'll
 see a **"SAMPLE DATA"** badge until you add credentials (see *Going live* below).
 
-## Working from your Windows PC at home
+## Saving your work to GitHub
 
-You have this on your work Mac. Here's how to run it on a home **Windows** PC and
-keep both machines in sync through GitHub.
-
-> **Never coded on this PC before?** Follow **[`WINDOWS-SETUP.md`](WINDOWS-SETUP.md)** —
-> it's this same process spelled out click-by-click, with download links, which boxes
-> to check, and a success check after every step. The summary below is the short version.
-
-### One-time setup on the Windows PC
-
-1. **Install Python 3** — download from <https://www.python.org/downloads/>, run the
-   installer, and **check "Add Python to PATH"** on the first screen. Verify in a new
-   Command Prompt or PowerShell window:
-   ```bat
-   python --version
-   ```
-2. **Install Git** — <https://git-scm.com/download/win>, default options are fine.
-   Verify:
-   ```bat
-   git --version
-   ```
-3. **Clone the project** (this downloads the code from GitHub):
-   ```bat
-   git clone https://github.com/kendoric2/TLD-DASHBOARD-.git
-   cd TLD-DASHBOARD-
-   ```
-4. **(Recommended) create a virtual environment** so dependencies stay tidy:
-   ```bat
-   python -m venv venv
-   venv\Scripts\activate
-   ```
-5. **Install dependencies:**
-   ```bat
-   pip install -r requirements.txt
-   ```
-6. **Add your credentials.** `.env` is git-ignored, so it does **not** come down with
-   the clone — you create it once on each machine. Copy the template and edit it:
-   ```bat
-   copy .env.example .env
-   notepad .env
-   ```
-   Fill in `TLD_BASE_URL`, `TLD_API_ID`, `TLD_API_KEY` (see *Going live* below).
-
-### Run it on Windows
-
-```bat
-python src\app.py
-```
-
-…then open **http://localhost:5050**. Or just **double-click `bin\start.bat`** — the
-Windows launcher I added (it finds your venv automatically if you made one).
-
-### Windows gotchas
-
-- Use **`python`** (not `python3`) and **backslashes** in paths (`src\app.py`).
-- If typing `python` opens the Microsoft Store, install from python.org and re-check
-  "Add to PATH," or use **`py`** instead (`py src\app.py`).
-- If PowerShell blocks `venv\Scripts\activate`, either use **Command Prompt**, or run
-  this once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-- The first `git push` will prompt you to sign in to GitHub (browser or a personal
-  access token) — that's normal.
-
-## Working across two machines (keep Mac + Windows in sync)
-
-Everything syncs through GitHub. The golden rule: **pull before you start, push when
-you finish.**
+The code lives in a GitHub repo, so committing also backs your work up off the
+machine. After making changes:
 
 ```bash
-# Start of a session, on whichever machine you're on:
-git pull
-
-# After you've made changes:
 git add -A
 git commit -m "what you changed"
 git push
 ```
 
-Do that and your work Mac and home Windows PC always have the latest code. Your
-**`.env` stays local on each machine** (it's never synced), so you only set
-credentials up once per computer. On the Mac you can also use the
-**`push_to_github.command`** helper to commit + push with a double-click.
+You can also double-click **`push_to_github.command`** to commit + push without
+touching the terminal.
 
 ## Project structure
 
@@ -142,15 +73,14 @@ TLDDASHBOARD/
 │   └── snippets/            # small finished utilities worth keeping
 ├── tests/                   # live sanity-check scripts
 ├── bin/
-│   ├── start.command        # macOS: double-click to run
-│   ├── start.bat            # Windows: double-click to run
-│   └── iHealth Dashboard.app
+│   ├── start.command        # double-click to run (opens Terminal)
+│   └── iHealth Dashboard.app # double-click to run (no Terminal)
 ├── archive/                 # older/superseded scripts, kept for reference (unused)
 ├── egress_columns.xlsx      # reference: every enabled endpoint's columns + a sample value
-├── push_to_github.command   # macOS helper: commit + push with a double-click
+├── push_to_github.command   # helper: commit + push with a double-click
 ├── requirements.txt         # Python dependencies
 ├── .env.example             # template for .env
-└── .env                     # YOUR credentials (you create this per machine; never committed)
+└── .env                     # YOUR credentials (you create this; never committed)
 ```
 
 ## Key files
@@ -242,11 +172,10 @@ PORT=5050        # change the port (default 5050)
 NO_BROWSER=1     # don't auto-open the browser on launch
 ```
 
-Then restart (`python3 src/app.py`, or `python src\app.py` on Windows) and visit
-**http://localhost:5050/health** — it should report `"live": true`. Create the API
-key **restricted to the egress (read) endpoints** so it physically cannot write
-anything. Enable only the endpoints you need — this dashboard uses `policies`,
-`leads`, and `report_cpa_agent`.
+Then restart (`python3 src/app.py`) and visit **http://localhost:5050/health** — it
+should report `"live": true`. Create the API key **restricted to the egress (read)
+endpoints** so it physically cannot write anything. Enable only the endpoints you
+need — this dashboard uses `policies`, `leads`, and `report_cpa_agent`.
 
 ## Read-only by design
 
