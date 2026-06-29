@@ -27,6 +27,7 @@ NO_BROWSER = bool(os.getenv("NO_BROWSER"))
 # --- Business constants ------------------------------------------------------
 FALCON_VENDOR_ID   = 14646                 # the "Falcon" lead source
 CONVERTED_STATUSES = {"active", "sale"}    # a billable Falcon lead = converted if its status is one of these
+EXCLUDED_POLICY_CARRIERS = {"GTL"}         # carriers NOT counted in "Policies Sold" (separate product line); compared uppercased
 
 # --- HTTP --------------------------------------------------------------------
 TIMEOUT = 30                               # seconds — standardized across all callers

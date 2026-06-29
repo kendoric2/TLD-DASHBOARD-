@@ -14,7 +14,7 @@
     "policies_ids": {
       "endpoint": "policies",
       "date_bounded": true,
-      "payload": { "columns": ["policy_id", "lead_id"], "limit": 50000 }
+      "payload": { "columns": ["policy_id", "lead_id", "carrier_name"], "limit": 50000 }
     },
 
     "billable_leads_count": {

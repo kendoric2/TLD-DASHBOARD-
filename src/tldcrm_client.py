@@ -142,12 +142,15 @@ class TLDCRMClient:
         return out
 
     def policies_sold(self, start, end):
-        """Count of policies sold in the range, DEDUPED by unique id. Pulls the actual
-        policy_id + lead_id rows (not a server COUNT) and folds them into a set keyed by
-        policy_id, falling back to lead_id when a row has no policy_id — so the same record
+        """Count of policies sold in the range, DEDUPED by unique id (policy_id, else
+        lead_id) and EXCLUDING carriers in config.EXCLUDED_POLICY_CARRIERS (e.g. GTL — a
+        separate product line). Pulls the actual id rows (+ carrier) instead of a server
+        COUNT, drops excluded carriers, then folds the rest into a set so the same record
         is never counted twice, even across overlapping or repeated pulls."""
         rows = self.run("policies_ids", start, end)
-        return len(dedupe_ids(rows))
+        kept = [r for r in rows if isinstance(r, dict)
+                and str(r.get("carrier_name") or "").strip().upper() not in config.EXCLUDED_POLICY_CARRIERS]
+        return len(dedupe_ids(kept))
 
     def agent_performance(self, start, end):
         agents = []
