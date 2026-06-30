@@ -14,12 +14,12 @@ def get_sample_dashboard(range_label="This Month"):
             "blended_cpa": 24.27,
         },
         "by_carrier": [
-            {"label": "Aetna", "count": 87},
-            {"label": "UnitedHealthcare", "count": 75},
-            {"label": "Humana", "count": 59},
-            {"label": "Cigna", "count": 44},
-            {"label": "WellCare", "count": 28},
-            {"label": "Other", "count": 19},
+            {"label": "Aetna", "count": 87, "enrolled": 18},
+            {"label": "UnitedHealthcare", "count": 75, "enrolled": 15},
+            {"label": "Humana", "count": 59, "enrolled": 12},
+            {"label": "Cigna", "count": 44, "enrolled": 9},
+            {"label": "WellCare", "count": 28, "enrolled": 6},
+            {"label": "Other", "count": 19, "enrolled": 3},
         ],
         "recent_sales": [
             {"date_sold": "Jun 24", "agent": "Maria Alvarez", "agent_commission": 80.00, "enroller": "Carlos Ruiz", "fronter_commission": 30.00, "carrier": "Aetna"},

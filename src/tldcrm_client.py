@@ -508,13 +508,18 @@ def _kept_policies(rows):
 
 
 def _carrier_breakdown(deduped_rows):
-    """Policy count grouped by carrier from already-deduped rows — ALL carriers, INCLUDING
-    GTL, so the chart reconciles to the CRM's own carrier table. Sorted high to low."""
+    """Per-carrier metrics from already-deduped rows — ALL carriers, INCLUDING GTL, so the
+    chart reconciles to the CRM's own carrier table. Each entry is {label, count, enrolled},
+    where 'enrolled' = how many of that carrier's deals have a fronter (an enroller).
+    Sorted high to low by count."""
     by = {}
     for r in deduped_rows:
         label = (str(r.get("carrier_name") or "").strip() or "—")
-        by[label] = by.get(label, 0) + 1
-    out = [{"label": k, "count": v} for k, v in by.items()]
+        g = by.setdefault(label, {"label": label, "count": 0, "enrolled": 0})
+        g["count"] += 1
+        if str(r.get("fronter_id") or "").strip() not in ("", "0"):
+            g["enrolled"] += 1
+    out = list(by.values())
     out.sort(key=lambda x: -x["count"])
     return out
 

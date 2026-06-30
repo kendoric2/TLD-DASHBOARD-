@@ -7,6 +7,7 @@ const $ = s => document.querySelector(s);
 const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 let charts = {};          // keep chart instances so we can destroy before redraw
+let selectedCarrier = null;  // carrier slice currently shown in the detail panel
 let lastData = null;      // cache for client-side sorting
 let sortKey = "policies", sortDir = -1;
 let autoTimer = null;     // handle for the auto-refresh interval
@@ -323,6 +324,13 @@ function renderCarrierChart(id, rows) {
     options: {
       maintainAspectRatio: false,
       layout: { padding: 6 },
+      onHover(evt, els){ if (evt.native) evt.native.target.style.cursor = els.length ? "pointer" : "default"; },
+      onClick(evt, els){
+        if (!els.length) return;
+        const i = els[0].index;
+        selectedCarrier = rows[i].label;
+        renderCarrierDetail(rows[i], i);
+      },
       plugins: {
         legend: { position: "right", labels: { boxWidth: 12, padding: 10, font: { size: 12 } } },
         tooltip: {
@@ -338,6 +346,24 @@ function renderCarrierChart(id, rows) {
       },
     },
   });
+  // keep the selected carrier's detail visible across refreshes (numbers update); else prompt
+  const idx = rows.findIndex(r => r.label === selectedCarrier);
+  renderCarrierDetail(idx >= 0 ? rows[idx] : null, idx);
+}
+
+// Detail panel under the pie — Total Deals + how many were Enrolled (deals with a fronter).
+function renderCarrierDetail(row, i){
+  const el = $("#carrierDetail");
+  if (!el) return;
+  if (!row){ el.innerHTML = '<div class="cd-hint">Click a carrier for its details</div>'; return; }
+  const total = row.count || 0, enr = row.enrolled || 0;
+  const pct = total ? (enr / total * 100).toFixed(1) : "0.0";
+  el.innerHTML = `
+    <div class="cd-name"><span class="cd-dot" style="background:${carrierColor(row.label, i)}"></span>${row.label}</div>
+    <div class="cd-stats">
+      <div><div class="cd-v">${total.toLocaleString()}</div><div class="cd-l">Total Deals</div></div>
+      <div><div class="cd-v">${enr.toLocaleString()}</div><div class="cd-l">Enrolled · ${pct}%</div></div>
+    </div>`;
 }
 
 function renderEnrollments(e) {
