@@ -124,7 +124,8 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 /* Enrollment tracker (in the card next to Policies by Carrier) */
 .enroll-total{font-size:13px;color:var(--muted);margin:-4px 0 10px}
 .enroll-total b{font-size:26px;color:var(--brand-dark);font-weight:800;letter-spacing:-.5px;margin-left:6px;vertical-align:-2px}
-.enroll-list{max-height:208px;overflow-y:auto}
+.enroll-card{display:flex;flex-direction:column}
+.enroll-list{flex:1 1 0;min-height:0;overflow-y:auto}   /* fills the card's height, scrolls only if needed */
 .enroll-row{display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
 .enroll-row:last-child{border-bottom:none}
 .enroll-name{color:var(--text)}
