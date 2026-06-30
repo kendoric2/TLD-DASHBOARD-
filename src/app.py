@@ -25,7 +25,7 @@ from flask import Flask, jsonify, render_template, request
 
 import config
 import cache
-from sample_data import get_sample_dashboard
+from sample_data import get_sample_dashboard, get_sample_board
 
 # date_range_for only reads the JSON template (no credentials needed); used so
 # demo responses also report the resolved start/end dates.
@@ -147,6 +147,34 @@ def api_agent_cpa():
         return jsonify({"by_agent": {}, "totals": {}, "error": str(e)}), 400
     except Exception as ex:
         return jsonify({"by_agent": {}, "totals": {}, "error": str(ex)})
+
+
+@app.route("/api/sales_board")
+def api_sales_board():
+    """Combined sales leaderboard (agents + fronters) for the board's OWN date range."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    client = _client()
+    if client is None:
+        data = get_sample_board(label)
+        data["date_range"] = {"start": start, "end": end}
+        return jsonify(data)
+
+    try:
+        data = client.sales_board(start, end)
+        data["range_label"] = label
+        data["date_range"] = {"start": start, "end": end}
+        data["demo"] = False
+        return jsonify(data)
+    except Exception as e:
+        data = get_sample_board(label)
+        data["demo"] = True
+        data["error"] = f"Live pull failed, showing sample data: {e}"
+        data["date_range"] = {"start": start, "end": end}
+        return jsonify(data)
 
 
 def _warm_cpa_cache():

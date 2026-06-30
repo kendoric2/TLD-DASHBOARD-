@@ -167,6 +167,17 @@ class TLDCRMClient:
             })
         return agents
 
+    def sales_board(self, start, end):
+        """Combined leaderboard (agents + fronters) for a date range — its own independent
+        pull, deduped + stage=sale. Disk-cached for final ranges like the dashboard."""
+        cached = cache.load("sales_board", start, end)
+        if cached is not None:
+            return cached
+        rows = _dedupe_rows(self.run("policies_ids", start, end))
+        data = {"board": _sales_board(rows)}
+        cache.save("sales_board", start, end, data)
+        return data
+
     def vendor_performance(self, start, end):
         """Per-vendor numbers from the Vendor CPA report (vendorperformance) for the date
         range. Returns a list of {vendor_id, vendor, leads, billable, sales, policies,
@@ -536,6 +547,30 @@ def _agent_breakdown(rows):
         by[name] = by.get(name, 0) + 1
     out = [{"name": k, "policies": v} for k, v in by.items()]
     out.sort(key=lambda x: -x["policies"])
+    return out
+
+
+def _sales_board(deduped_rows):
+    """One row per person — agents (closers) and fronters (enrollers) together. Each entry:
+    closed (deals as agent), enrolled (deals as fronter), total, and a by-carrier breakdown
+    of their closed deals. Sorted by total, then closed, then name."""
+    people = {}
+    for r in deduped_rows:
+        a = str(r.get("agent_name") or "").strip()
+        f = str(r.get("fronter_name") or "").strip()
+        car = str(r.get("carrier_name") or "").strip() or "—"
+        if a:
+            p = people.setdefault(a, {"name": a, "closed": 0, "enrolled": 0, "_car": {}})
+            p["closed"] += 1
+            p["_car"][car] = p["_car"].get(car, 0) + 1
+        if f:
+            people.setdefault(f, {"name": f, "closed": 0, "enrolled": 0, "_car": {}})["enrolled"] += 1
+    out = []
+    for p in people.values():
+        carriers = sorted(({"label": k, "count": v} for k, v in p["_car"].items()), key=lambda x: -x["count"])
+        out.append({"name": p["name"], "closed": p["closed"], "enrolled": p["enrolled"],
+                    "total": p["closed"] + p["enrolled"], "carriers": carriers})
+    out.sort(key=lambda x: (-x["total"], -x["closed"], x["name"]))
     return out
 
 

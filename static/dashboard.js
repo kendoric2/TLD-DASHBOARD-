@@ -8,6 +8,7 @@ const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).tr
 
 let charts = {};          // keep chart instances so we can destroy before redraw
 let selectedCarrier = null;  // carrier slice currently shown in the detail panel
+let boardOpen = true;     // sales board expanded (true) or collapsed to its tab (false)
 let lastData = null;      // cache for client-side sorting
 let sortKey = "policies", sortDir = -1;
 let autoTimer = null;     // handle for the auto-refresh interval
@@ -18,6 +19,7 @@ function todayISO(){ const d = new Date(); return new Date(d - d.getTimezoneOffs
 
 /* ===== Custom From/To date pickers: flatpickr calendar + a relative-times menu ===== */
 let fpStart = null, fpEnd = null;
+const fpById = {};        // field id -> its flatpickr instance (main picker + board picker)
 
 function mkdate(y, mo, d){
   const dt = new Date(y, mo - 1, d);
@@ -39,13 +41,16 @@ function setPicker(fp, id, dt){
 }
 
 function initDatePickers(){
-  if (typeof flatpickr !== "undefined"){
-    const opts = { dateFormat: "m/d/Y", allowInput: true, disableMobile: true };
-    fpStart = flatpickr("#startDate", opts);   // clicking the field opens the calendar grid
-    fpEnd   = flatpickr("#endDate", opts);
-  }
-  $("#startMenuBtn").addEventListener("click", (e) => { e.stopPropagation(); openRelMenu("startDate", e.currentTarget); });
-  $("#endMenuBtn").addEventListener("click",   (e) => { e.stopPropagation(); openRelMenu("endDate", e.currentTarget); });
+  const opts = { dateFormat: "m/d/Y", allowInput: true, disableMobile: true };
+  const mk = id => (typeof flatpickr !== "undefined" && $("#"+id)) ? flatpickr("#"+id, opts) : null;
+  fpStart = mk("startDate"); fpEnd = mk("endDate");          // clicking a field opens the calendar grid
+  fpById["startDate"] = fpStart; fpById["endDate"] = fpEnd;
+  fpById["boardStart"] = mk("boardStart"); fpById["boardEnd"] = mk("boardEnd");
+  [["startMenuBtn","startDate"], ["endMenuBtn","endDate"],
+   ["boardStartMenuBtn","boardStart"], ["boardEndMenuBtn","boardEnd"]].forEach(([btn, fld]) => {
+    const el = $("#"+btn);
+    if (el) el.addEventListener("click", (e) => { e.stopPropagation(); openRelMenu(fld, e.currentTarget); });
+  });
   document.addEventListener("click", (e) => { if (relMenu && !relMenu.contains(e.target)) closeRelMenu(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeRelMenu(); });
 }
@@ -111,7 +116,7 @@ function openRelMenu(targetId, anchor){
 }
 function closeRelMenu(){ if (relMenu){ relMenu.remove(); relMenu = null; relTarget = null; } }
 function applyRelDate(dt){
-  setPicker(relTarget === "startDate" ? fpStart : fpEnd, relTarget, dt);
+  setPicker(fpById[relTarget], relTarget, dt);
   hideErr();
   closeRelMenu();
 }
@@ -169,6 +174,7 @@ async function load() {
     lastData = data;
     render(data);
     if (!data.demo) loadCPA(sel);   // phase 2: fill/refresh COST/CPA + cost tiles without blocking paint
+    if (boardOpen) boardLoad();     // refresh the sales board on the same cycle (uses its own range)
   } catch (e) {
     $("#errbar").hidden = false;
     $("#errbar").textContent = "Could not reach the backend: " + e;
@@ -429,11 +435,53 @@ function renderAgents(rows) {
     </tr>`;
 }
 
+/* ===== Sales Board (own date range + collapsible) ===== */
+function boardMsg(t){ return `<tr><td colspan="6" class="dash" style="padding:14px">${t}</td></tr>`; }
+async function boardLoad(){
+  const list = $("#boardList");
+  if (!list) return;
+  const s = pickerISO("boardStart"), e = pickerISO("boardEnd");
+  if (!s || !e){ list.innerHTML = boardMsg("Pick a start and end date."); return; }
+  if (e < s){ list.innerHTML = boardMsg("End date can’t be before the start date."); return; }
+  try {
+    const res = await fetch(`/api/sales_board?range=custom&start=${s}&end=${e}`);
+    const data = await res.json();
+    if (data.error && !data.board){ list.innerHTML = boardMsg(data.error); return; }
+    renderBoard(data);
+  } catch (err) { list.innerHTML = boardMsg("Could not load the sales board."); }
+}
+function renderBoard(data){
+  $("#boardLabel").textContent = data.range_label || "";
+  const rows = data.board || [];
+  const fmt = n => (n || 0).toLocaleString();
+  $("#boardList").innerHTML = rows.length ? rows.map((p, i) => {
+    const top = (p.carriers || []).slice(0, 4).map(c => `${c.label} ${c.count}`).join(" · ");
+    const more = (p.carriers || []).length > 4 ? " …" : "";
+    return `<tr>
+      <td><span class="rank ${i === 0 ? 'top' : ''}">${i + 1}</span></td>
+      <td>${p.name}</td>
+      <td class="num">${fmt(p.closed)}</td>
+      <td class="num">${fmt(p.enrolled)}</td>
+      <td class="num"><b>${fmt(p.total)}</b></td>
+      <td class="bd-car">${top ? top + more : '<span class="dash">—</span>'}</td>
+    </tr>`;
+  }).join("") : boardMsg("No deals in this range.");
+}
+function toggleBoard(){
+  boardOpen = !boardOpen;
+  $("#boardSection").classList.toggle("collapsed", !boardOpen);
+  $("#boardToggle").setAttribute("aria-expanded", boardOpen ? "true" : "false");
+  if (boardOpen) boardLoad();
+}
+
 /* ---- GUI events ---- */
 $("#applyRange").addEventListener("click", load);
 ["startDate","endDate"].forEach(id => $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") load(); }));
 $("#refresh").addEventListener("click", load);
 $("#autoRefresh").addEventListener("change", () => armAuto());
+$("#boardToggle").addEventListener("click", toggleBoard);
+$("#boardApply").addEventListener("click", boardLoad);
+["boardStart","boardEnd"].forEach(id => { const el = $("#"+id); if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") boardLoad(); }); });
 document.querySelectorAll("th[data-sort]").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.getAttribute("data-sort");
@@ -444,10 +492,12 @@ document.querySelectorAll("th[data-sort]").forEach(th => {
 });
 
 initDatePickers();
-// Default to today's data on first load (both fields = today).
+// Default to today's data on first load (main + board fields = today).
 (function(){
   const today = new Date(); today.setHours(0,0,0,0);
   setPicker(fpStart, "startDate", today);
   setPicker(fpEnd, "endDate", today);
+  setPicker(fpById["boardStart"], "boardStart", today);
+  setPicker(fpById["boardEnd"], "boardEnd", today);
 })();
 load();

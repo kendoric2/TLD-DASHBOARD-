@@ -121,6 +121,20 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .cd-v{font-size:22px;font-weight:800;color:var(--brand-dark);letter-spacing:-.5px;font-variant-numeric:tabular-nums}
 .cd-l{font-size:12px;color:var(--muted);font-weight:600}
 
+/* Sales Board — navy header bar (own date range) that collapses to just the tab */
+.board-section{margin-top:26px}
+.board-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  background:var(--brand-dark);color:#fff;border-radius:12px;padding:11px 16px}
+.board-toggle{display:flex;align-items:center;gap:8px;background:none;border:none;color:#fff;
+  font-size:15px;font-weight:700;cursor:pointer;padding:0}
+.board-caret{display:inline-block;font-size:12px;transition:transform .15s}
+.board-section.collapsed .board-caret{transform:rotate(-90deg)}
+.board-range{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.board-range .to{color:#fff;opacity:.85;font-size:13px}
+.board-body{margin-top:12px}
+.board-section.collapsed .board-body,.board-section.collapsed .board-range{display:none}
+.bd-car{color:var(--muted);font-size:12.5px}
+
 /* Enrollment tracker (in the card next to Policies by Carrier) */
 .enroll-total{font-size:13px;color:var(--muted);margin:-4px 0 10px}
 .enroll-total b{font-size:26px;color:var(--brand-dark);font-weight:800;letter-spacing:-.5px;margin-left:6px;vertical-align:-2px}

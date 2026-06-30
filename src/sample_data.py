@@ -54,3 +54,27 @@ def get_sample_dashboard(range_label="This Month"):
             ],
         },
     }
+
+
+def get_sample_board(range_label="Today"):
+    """Placeholder Sales Board data shown in DEMO mode."""
+    return {
+        "demo": True,
+        "range_label": range_label,
+        "board": [
+            {"name": "Okcuoglu, Kaan", "closed": 12, "enrolled": 3, "total": 15,
+             "carriers": [{"label": "UHC", "count": 6}, {"label": "Aetna", "count": 4}, {"label": "Humana", "count": 2}]},
+            {"name": "Desir, G", "closed": 9, "enrolled": 5, "total": 14,
+             "carriers": [{"label": "Aetna", "count": 5}, {"label": "UHC", "count": 4}]},
+            {"name": "Brown, Ernest", "closed": 11, "enrolled": 0, "total": 11,
+             "carriers": [{"label": "Humana", "count": 6}, {"label": "Cigna", "count": 3}, {"label": "UHC", "count": 2}]},
+            {"name": "Escoffery, Lashaunah", "closed": 0, "enrolled": 9, "total": 9, "carriers": []},
+            {"name": "Mckenzie, Michael", "closed": 7, "enrolled": 1, "total": 8,
+             "carriers": [{"label": "WellCare", "count": 4}, {"label": "Aetna", "count": 3}]},
+            {"name": "Teheran, Eli", "closed": 0, "enrolled": 7, "total": 7, "carriers": []},
+            {"name": "Barros, Matheus", "closed": 6, "enrolled": 0, "total": 6,
+             "carriers": [{"label": "UHC", "count": 3}, {"label": "Humana", "count": 3}]},
+            {"name": "Chevelon, Ziea", "closed": 2, "enrolled": 4, "total": 6,
+             "carriers": [{"label": "Aetna", "count": 2}]},
+        ],
+    }
