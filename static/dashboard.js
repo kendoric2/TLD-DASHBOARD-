@@ -15,15 +15,120 @@ const AUTO_MS = 30000;    // auto-refresh every 30 seconds
 // Local YYYY-MM-DD for "today" (used to skip auto-refresh on a finished custom range).
 function todayISO(){ const d = new Date(); return new Date(d - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
 
-// The current selection: a preset key, or a custom range with explicit From/To dates.
-// `token` uniquely identifies the selection so refresh + stale checks work for custom too.
-function currentSel(){
-  const key = $("#range").value;
-  if (key === "custom"){
-    const s = $("#startDate").value, e = $("#endDate").value;
-    return { key, start: s, end: e, token: `custom:${s}:${e}` };
+/* ===== Custom From/To date pickers: flatpickr calendar + a relative-times menu ===== */
+let fpStart = null, fpEnd = null;
+
+function mkdate(y, mo, d){
+  const dt = new Date(y, mo - 1, d);
+  return (dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d) ? dt : null;
+}
+// Accept M/D/YYYY, M/D/YY, or YYYY-MM-DD when typed; returns a Date or null.
+function parseDateInput(s){
+  s = (s || "").trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);  if (m) return mkdate(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);     if (m) return mkdate(+m[3], +m[1], +m[2]);
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);     if (m) return mkdate(2000 + +m[3], +m[1], +m[2]);
+  return null;
+}
+function toISO(dt){ return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`; }
+function pickerISO(id){ const dt = parseDateInput($("#"+id).value); return dt ? toISO(dt) : ""; }
+function setPicker(fp, id, dt){
+  if (fp) fp.setDate(dt, true);   // keeps flatpickr + the input text in sync
+  else { const p = n => String(n).padStart(2,"0"); $("#"+id).value = `${p(dt.getMonth()+1)}/${p(dt.getDate())}/${dt.getFullYear()}`; }
+}
+
+function initDatePickers(){
+  if (typeof flatpickr !== "undefined"){
+    const opts = { dateFormat: "m/d/Y", allowInput: true, disableMobile: true };
+    fpStart = flatpickr("#startDate", opts);   // clicking the field opens the calendar grid
+    fpEnd   = flatpickr("#endDate", opts);
   }
-  return { key, start: null, end: null, token: key };
+  $("#startMenuBtn").addEventListener("click", (e) => { e.stopPropagation(); openRelMenu("startDate", e.currentTarget); });
+  $("#endMenuBtn").addEventListener("click",   (e) => { e.stopPropagation(); openRelMenu("endDate", e.currentTarget); });
+  document.addEventListener("click", (e) => { if (relMenu && !relMenu.contains(e.target)) closeRelMenu(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeRelMenu(); });
+}
+
+/* --- relative-times menu (the calendar-icon popup) --- */
+let relMenu = null, relTarget = null;
+const WK = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+function startOfWeek(base){ const x = new Date(base); x.setHours(0,0,0,0); x.setDate(x.getDate() - x.getDay()); return x; }  // Sunday
+function startOfQuarter(base){ return new Date(base.getFullYear(), Math.floor(base.getMonth()/3)*3, 1); }
+
+function resolveRel(rel){
+  const t = new Date(); t.setHours(0,0,0,0);
+  if (rel === "today") return t;
+  if (rel === "yesterday"){ const d = new Date(t); d.setDate(d.getDate()-1); return d; }
+  if (rel === "this-week") return startOfWeek(t);
+  if (rel === "this-month") return new Date(t.getFullYear(), t.getMonth(), 1);
+  if (rel === "this-quarter") return startOfQuarter(t);
+  if (rel === "this-year") return new Date(t.getFullYear(), 0, 1);
+  if (rel === "last-week"){ const s = startOfWeek(t); s.setDate(s.getDate()-7); return s; }
+  if (rel === "last-month") return new Date(t.getFullYear(), t.getMonth()-1, 1);
+  if (rel === "last-quarter"){ const s = startOfQuarter(t); s.setMonth(s.getMonth()-3); return s; }
+  if (rel === "last-year") return new Date(t.getFullYear()-1, 0, 1);
+  if (rel.startsWith("this-dow-")){ const s = startOfWeek(t); s.setDate(s.getDate() + (+rel.slice(9))); return s; }
+  if (rel.startsWith("last-dow-")){ const s = startOfWeek(t); s.setDate(s.getDate() - 7 + (+rel.slice(9))); return s; }
+  return null;
+}
+function resolveAgo(num, unit){
+  const d = new Date(); d.setHours(0,0,0,0);
+  num = Math.max(1, parseInt(num, 10) || 1);
+  if (unit === "days") d.setDate(d.getDate() - num);
+  else if (unit === "weeks") d.setDate(d.getDate() - 7*num);
+  else if (unit === "months") d.setMonth(d.getMonth() - num);
+  return d;
+}
+function relMenuHTML(){
+  const dows = pfx => WK.map((d,i) => `<button type="button" data-rel="${pfx}-dow-${i}">${d}</button>`).join("");
+  return `
+    <div class="relmenu-head"><span>Relative Times</span><button type="button" class="relmenu-x" data-close="1">&times;</button></div>
+    <div class="relrow"><button type="button" data-rel="today">Today</button><button type="button" data-rel="yesterday">Yesterday</button></div>
+    <div class="relrow"><input type="number" class="relnum" value="1" min="1" />
+      <button type="button" class="unit" data-unit="days">Days</button>
+      <button type="button" class="unit" data-unit="weeks">Weeks</button>
+      <button type="button" class="unit active" data-unit="months">Months</button>
+      <span class="relago">Ago</span></div>
+    <div class="relmenu-h">Beginning of This</div>
+    <div class="relrow"><button type="button" data-rel="this-week">Week</button><button type="button" data-rel="this-month">Month</button><button type="button" data-rel="this-quarter">Quarter</button><button type="button" data-rel="this-year">Year</button></div>
+    <div class="relrow">${dows("this")}</div>
+    <div class="relmenu-h">Beginning of Last</div>
+    <div class="relrow"><button type="button" data-rel="last-week">Week</button><button type="button" data-rel="last-month">Month</button><button type="button" data-rel="last-quarter">Quarter</button><button type="button" data-rel="last-year">Year</button></div>
+    <div class="relrow">${dows("last")}</div>`;
+}
+function openRelMenu(targetId, anchor){
+  closeRelMenu();
+  relTarget = targetId;
+  relMenu = document.createElement("div");
+  relMenu.className = "relmenu";
+  relMenu.innerHTML = relMenuHTML();
+  document.body.appendChild(relMenu);
+  const r = anchor.getBoundingClientRect();
+  relMenu.style.top = `${r.bottom + 6}px`;
+  relMenu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - relMenu.offsetWidth - 10))}px`;
+  relMenu.addEventListener("click", onRelMenuClick);
+}
+function closeRelMenu(){ if (relMenu){ relMenu.remove(); relMenu = null; relTarget = null; } }
+function applyRelDate(dt){
+  setPicker(relTarget === "startDate" ? fpStart : fpEnd, relTarget, dt);
+  hideErr();
+  closeRelMenu();
+}
+function onRelMenuClick(e){
+  const b = e.target.closest("button");
+  if (!b) return;
+  e.stopPropagation();
+  if (b.dataset.close){ closeRelMenu(); return; }
+  if (b.dataset.rel){ const dt = resolveRel(b.dataset.rel); if (dt) applyRelDate(dt); return; }
+  if (b.dataset.unit){ applyRelDate(resolveAgo(relMenu.querySelector(".relnum").value, b.dataset.unit)); }
+}
+
+// The selection is always the From/To date range now (the preset dropdown was removed —
+// the relative-times menu covers presets). `token` identifies the range so refresh + stale
+// checks keep working.
+function currentSel(){
+  const s = pickerISO("startDate"), e = pickerISO("endDate");
+  return { key: "custom", start: s, end: e, token: `custom:${s}:${e}` };
 }
 function qsFor(sel){
   return sel.key === "custom"
@@ -299,20 +404,6 @@ function renderAgents(rows) {
 }
 
 /* ---- GUI events ---- */
-function onRangeChange(){
-  const isCustom = $("#range").value === "custom";
-  $("#customRange").hidden = !isCustom;
-  if (isCustom){
-    if (!$("#startDate").value) $("#startDate").value = todayISO();
-    if (!$("#endDate").value) $("#endDate").value = todayISO();
-    hideErr();
-    $("#footer").textContent = "Pick a date range, then Apply.";
-  } else {
-    hideErr();
-    load();                                  // presets load immediately
-  }
-}
-$("#range").addEventListener("change", onRangeChange);
 $("#applyRange").addEventListener("click", load);
 ["startDate","endDate"].forEach(id => $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") load(); }));
 $("#refresh").addEventListener("click", load);
@@ -326,4 +417,11 @@ document.querySelectorAll("th[data-sort]").forEach(th => {
   });
 });
 
+initDatePickers();
+// Default to today's data on first load (both fields = today).
+(function(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  setPicker(fpStart, "startDate", today);
+  setPicker(fpEnd, "endDate", today);
+})();
 load();

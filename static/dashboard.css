@@ -47,14 +47,34 @@ header{
 .btn:hover{background:rgba(255,255,255,.24)}
 .range:focus,.btn:focus{outline:2px solid #fff}
 /* Custom From/To date range (shown when "Custom…" is selected) */
-.custom-range{display:flex;align-items:center;gap:6px}
-.datein{
-  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);
-  color:#fff;border-radius:9px;padding:7px 9px;font-size:13px;cursor:pointer;
-  color-scheme:dark;   /* keeps the native calendar icon legible on the dark header */
-}
-.datein:focus{outline:2px solid #fff}
+.custom-range{display:flex;align-items:center;gap:8px}
 .custom-range .to{color:#fff;opacity:.85;font-size:13px}
+.dpick{display:flex;align-items:center;background:rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.25);border-radius:9px;overflow:hidden}
+.dpick:focus-within{outline:2px solid #fff}
+.cal-btn{display:flex;align-items:center;justify-content:center;background:transparent;
+  border:none;border-right:1px solid rgba(255,255,255,.25);color:#fff;padding:6px 8px;cursor:pointer}
+.cal-btn:hover{background:rgba(255,255,255,.18)}
+.datein{background:transparent;border:none;color:#fff;padding:7px 9px;font-size:13px;width:104px;outline:none}
+.datein::placeholder{color:rgba(255,255,255,.7)}
+
+/* Relative-times quick-pick menu (popup under the calendar icon) */
+.relmenu{position:fixed;z-index:1000;background:#fff;color:var(--text);border:1px solid var(--line);
+  border-radius:12px;box-shadow:var(--shadow);padding:12px;width:300px;font-size:13px}
+.relmenu-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;color:var(--brand-dark);margin-bottom:8px}
+.relmenu-x{background:none;border:none;font-size:18px;line-height:1;cursor:pointer;color:var(--muted)}
+.relmenu-h{font-weight:700;color:var(--brand-dark);margin:12px 0 6px}
+.relrow{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;align-items:center}
+.relmenu button[data-rel],.relmenu .unit{background:#fff;border:1px solid var(--line);border-radius:8px;
+  padding:5px 10px;font-size:12.5px;color:var(--text);cursor:pointer}
+.relmenu button[data-rel]:hover,.relmenu .unit:hover{background:var(--bg);border-color:var(--brand)}
+.relmenu .unit.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.relnum{width:46px;border:1px solid var(--line);border-radius:8px;padding:5px 6px;font-size:12.5px}
+.relago{color:var(--muted)}
+
+/* flatpickr calendar — brand the selected day + today */
+.flatpickr-day.selected,.flatpickr-day.selected:hover{background:var(--brand);border-color:var(--brand)}
+.flatpickr-day.today{border-color:var(--brand)}
 .updated{font-size:12px;opacity:.85;text-align:right}
 .auto{
   display:flex;align-items:center;gap:6px;font-size:13px;color:#fff;

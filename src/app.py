@@ -60,8 +60,14 @@ def _parse_iso(s):
 
 
 def _custom_label(a, b):
-    """Readable label for a custom range, e.g. 'Jun 1 – Jun 15, 2026'."""
+    """Readable label for a range, e.g. 'Jun 1 – Jun 15, 2026'. Single days get friendly
+    names (Today / Yesterday) so the default view still reads nicely."""
     if a == b:
+        today = datetime.date.today()
+        if a == today:
+            return "Today"
+        if a == today - datetime.timedelta(days=1):
+            return "Yesterday"
         return f"{a.strftime('%b')} {a.day}, {a.year}"
     if a.year == b.year:
         return f"{a.strftime('%b')} {a.day} – {b.strftime('%b')} {b.day}, {b.year}"
