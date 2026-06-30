@@ -349,9 +349,7 @@ class TLDCRMClient:
         jobs = {
             "policy_rows": lambda: self.run("policies_ids", start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
-            "by_carrier": lambda: self._grouped("policies_by_carrier", start, end),
             "recent":     lambda: self.run("recent_sales"),
-            "agents":     lambda: self.agent_performance(start, end),
         }
         results, errors = {}, []
 
@@ -367,11 +365,17 @@ class TLDCRMClient:
                 k, v = fut.result()
                 results[k] = v
 
-        # One policies pull feeds both: deduped + GTL-excluded rows -> Policies Sold count
-        # and the enrollment tracker (grouped by fronter).
-        kept_policies = _kept_policies(results.get("policy_rows") or [])
+        # One policies pull, deduped ONCE, then sliced so the numbers can't disagree:
+        #   • Policies by Carrier: deduped, ALL carriers (incl GTL) -> matches the CRM table
+        #   • Policies Sold + enrollments: deduped AND GTL-excluded (separate product line)
+        deduped_all = _dedupe_rows(results.get("policy_rows") or [])
+        excluded = config.EXCLUDED_POLICY_CARRIERS
+        kept_policies = [r for r in deduped_all
+                         if str(r.get("carrier_name") or "").strip().upper() not in excluded]
         policies = len(kept_policies)
         enrollments = enrollment_tracker(kept_policies)
+        by_carrier = _carrier_breakdown(deduped_all)     # all carriers incl GTL -> matches table
+        agents = _agent_breakdown(kept_policies)         # GTL-excluded -> agent total = Policies Sold
 
         recent = [{
             "date_sold": r.get("date_sold"),
@@ -382,10 +386,9 @@ class TLDCRMClient:
             "carrier": r.get("carrier_name") or r.get("carrier"),
         } for r in (results.get("recent") or [])]
 
-        # Agent rows carry name + policies only here. COST/CPA + the Total Spend / Blended
-        # CPA tiles load separately via GET /api/agent_cpa, so the heavy report never blocks
-        # first paint — the page renders immediately and those fields fill in a moment later.
-        agents = results.get("agents") or []
+        # Agent rows carry name + policies only here (deduped, stage=sale, GTL-excluded, so
+        # the table's policy total equals Policies Sold). COST/CPA + the Total Spend / Blended
+        # CPA tiles load separately via GET /api/agent_cpa, so the heavy report never blocks paint.
 
         data = {
             "demo": False,
@@ -396,7 +399,7 @@ class TLDCRMClient:
                 "avg_gtl_premium": results.get("avg_gtl") or 0,
                 # conversion_rate loads in phase 2 (it needs the heavy report) — see /api/agent_cpa
             },
-            "by_carrier": results.get("by_carrier") or [],
+            "by_carrier": by_carrier,
             "recent_sales": recent,
             "agents": agents,
             "enrollments": enrollments,
@@ -476,20 +479,59 @@ def dedupe_ids(records):
     return keys
 
 
-def _kept_policies(rows):
-    """Deduped (policy_id -> lead_id) + GTL-excluded policy rows — the shared basis for
-    both Policies Sold and the enrollment tracker. Keeps the first row per unique key."""
+def _dedupe_rows(rows):
+    """Deduped, SALE-stage policy rows (canonical key policy_id -> lead_id, first row per
+    key). Policies whose stage isn't in config.POLICY_STAGE_INCLUDE (e.g. "redacted"/trash)
+    are dropped HERE, so every downstream count — carrier chart, Policies Sold, enrollments,
+    and the agent table — counts the same real sales and matches the CRM's carrier table.
+    No carrier filtering here (the carrier chart needs all carriers incl GTL)."""
+    include = config.POLICY_STAGE_INCLUDE
     seen, kept = set(), []
     for r in rows:
         if not isinstance(r, dict):
             continue
-        if str(r.get("carrier_name") or "").strip().upper() in config.EXCLUDED_POLICY_CARRIERS:
+        if str(r.get("stage") or "").strip().lower() not in include:
             continue
         k = _dedupe_key(r)
         if k and k not in seen:
             seen.add(k)
             kept.append(r)
     return kept
+
+
+def _kept_policies(rows):
+    """Deduped + GTL-excluded policy rows — the basis for Policies Sold and the
+    enrollment tracker (GTL is a separate product line)."""
+    excluded = config.EXCLUDED_POLICY_CARRIERS
+    return [r for r in _dedupe_rows(rows)
+            if str(r.get("carrier_name") or "").strip().upper() not in excluded]
+
+
+def _carrier_breakdown(deduped_rows):
+    """Policy count grouped by carrier from already-deduped rows — ALL carriers, INCLUDING
+    GTL, so the chart reconciles to the CRM's own carrier table. Sorted high to low."""
+    by = {}
+    for r in deduped_rows:
+        label = (str(r.get("carrier_name") or "").strip() or "—")
+        by[label] = by.get(label, 0) + 1
+    out = [{"label": k, "count": v} for k, v in by.items()]
+    out.sort(key=lambda x: -x["count"])
+    return out
+
+
+def _agent_breakdown(rows):
+    """Policy count per agent from already-deduped, GTL-excluded rows — drives the Agent
+    Performance table so its policy total equals Policies Sold. Skips the unassigned /
+    null-agent bucket. Sorted high to low."""
+    by = {}
+    for r in rows:
+        name = str(r.get("agent_name") or "").strip()
+        if not name:
+            continue
+        by[name] = by.get(name, 0) + 1
+    out = [{"name": k, "policies": v} for k, v in by.items()]
+    out.sort(key=lambda x: -x["policies"])
+    return out
 
 
 def enrollment_tracker(kept_rows):

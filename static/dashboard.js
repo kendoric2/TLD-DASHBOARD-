@@ -197,46 +197,41 @@ function carrierColor(label, i) {
   return CARRIER_FALLBACK[i % CARRIER_FALLBACK.length];
 }
 
-// Draws the value on top of each vertical bar (small custom plugin — no extra CDN).
-const barTopLabels = {
-  id: "barTopLabels",
-  afterDatasetsDraw(chart) {
-    const ctx = chart.ctx;
-    const meta = chart.getDatasetMeta(0);
-    if (!meta || !meta.data) return;
-    ctx.save();
-    ctx.fillStyle = C("--brand-dark");
-    ctx.font = '700 13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    meta.data.forEach((bar, i) => {
-      const v = chart.data.datasets[0].data[i];
-      if (v != null) ctx.fillText(Number(v).toLocaleString(), bar.x, bar.y - 4);
-    });
-    ctx.restore();
-  }
-};
-
-// Policies by Carrier — vertical bars in each carrier's brand color, total on top.
+// Policies by Carrier — pie chart in each carrier's brand color. Hovering a slice shows
+// that carrier's policy count and its share of the total.
 function renderCarrierChart(id, rows) {
   rows = rows || [];
   charts[id]?.destroy();
+  const total = rows.reduce((s, r) => s + (r.count || 0), 0);
   charts[id] = new Chart(document.getElementById(id), {
-    type: "bar",
-    data: { labels: rows.map(r => r.label),
-      datasets: [{ data: rows.map(r => r.count),
+    type: "pie",
+    data: {
+      labels: rows.map(r => r.label),
+      datasets: [{
+        data: rows.map(r => r.count),
         backgroundColor: rows.map((r, i) => carrierColor(r.label, i)),
-        borderRadius: 6, maxBarThickness: 70 }] },
-    options: {
-      layout: { padding: { top: 24 } },                 // headroom for the top labels
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { grid: { display: false } },
-        y: { beginAtZero: true, grid: { color: C("--line") }, ticks: { precision: 0 } }
-      },
-      maintainAspectRatio: false
+        borderColor: "#fff",
+        borderWidth: 2,
+        hoverOffset: 8,                                  // hovered slice pops out slightly
+      }],
     },
-    plugins: [barTopLabels]
+    options: {
+      maintainAspectRatio: false,
+      layout: { padding: 6 },
+      plugins: {
+        legend: { position: "right", labels: { boxWidth: 12, padding: 10, font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            // e.g. "Humana"  ->  " 17,570 policies · 38.3% of 45,840"
+            label(ctx) {
+              const v = ctx.parsed || 0;
+              const pct = total ? (v / total * 100).toFixed(1) : "0.0";
+              return ` ${v.toLocaleString()} policies · ${pct}% of ${total.toLocaleString()}`;
+            },
+          },
+        },
+      },
+    },
   });
 }
 
