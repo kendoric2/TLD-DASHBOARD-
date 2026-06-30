@@ -436,7 +436,7 @@ function renderAgents(rows) {
 }
 
 /* ===== Sales Board (own date range + collapsible) ===== */
-function boardMsg(t){ return `<tr><td colspan="6" class="dash" style="padding:14px">${t}</td></tr>`; }
+function boardMsg(t){ return `<tr><td colspan="7" class="dash" style="padding:14px">${t}</td></tr>`; }
 async function boardLoad(){
   const list = $("#boardList");
   if (!list) return;
@@ -454,6 +454,7 @@ function renderBoard(data){
   $("#boardLabel").textContent = data.range_label || "";
   const rows = data.board || [];
   const fmt = n => (n || 0).toLocaleString();
+  const money = v => '$' + Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
   $("#boardList").innerHTML = rows.length ? rows.map((p, i) => {
     const top = (p.carriers || []).slice(0, 4).map(c => `${c.label} ${c.count}`).join(" · ");
     const more = (p.carriers || []).length > 4 ? " …" : "";
@@ -463,6 +464,7 @@ function renderBoard(data){
       <td class="num">${fmt(p.closed)}</td>
       <td class="num">${fmt(p.enrolled)}</td>
       <td class="num"><b>${fmt(p.total)}</b></td>
+      <td class="num">${money(p.commission)}</td>
       <td class="bd-car">${top ? top + more : '<span class="dash">—</span>'}</td>
     </tr>`;
   }).join("") : boardMsg("No deals in this range.");

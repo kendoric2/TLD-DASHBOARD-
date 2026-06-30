@@ -560,16 +560,20 @@ def _sales_board(deduped_rows):
         f = str(r.get("fronter_name") or "").strip()
         car = str(r.get("carrier_name") or "").strip() or "—"
         if a:
-            p = people.setdefault(a, {"name": a, "closed": 0, "enrolled": 0, "_car": {}})
+            p = people.setdefault(a, {"name": a, "closed": 0, "enrolled": 0, "commission": 0, "_car": {}})
             p["closed"] += 1
+            p["commission"] += _num(r.get("commission_paid"))            # agent's cut on a sale
             p["_car"][car] = p["_car"].get(car, 0) + 1
         if f:
-            people.setdefault(f, {"name": f, "closed": 0, "enrolled": 0, "_car": {}})["enrolled"] += 1
+            p = people.setdefault(f, {"name": f, "closed": 0, "enrolled": 0, "commission": 0, "_car": {}})
+            p["enrolled"] += 1
+            p["commission"] += _num(r.get("commission_paid_fronter"))     # enroller's cut on an enrollment
     out = []
     for p in people.values():
         carriers = sorted(({"label": k, "count": v} for k, v in p["_car"].items()), key=lambda x: -x["count"])
         out.append({"name": p["name"], "closed": p["closed"], "enrolled": p["enrolled"],
-                    "total": p["closed"] + p["enrolled"], "carriers": carriers})
+                    "total": p["closed"] + p["enrolled"], "commission": round(p["commission"], 2),
+                    "carriers": carriers})
     out.sort(key=lambda x: (-x["total"], -x["closed"], x["name"]))
     return out
 
