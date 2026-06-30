@@ -9,6 +9,7 @@ const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).tr
 let charts = {};          // keep chart instances so we can destroy before redraw
 let selectedCarrier = null;  // carrier slice currently shown in the detail panel
 let boardOpen = true;     // sales board expanded (true) or collapsed to its tab (false)
+let boardAuto = true;     // board auto-anchors to this-week-to-date until the user picks a custom range
 let lastData = null;      // cache for client-side sorting
 let sortKey = "policies", sortDir = -1;
 let autoTimer = null;     // handle for the auto-refresh interval
@@ -117,6 +118,7 @@ function openRelMenu(targetId, anchor){
 function closeRelMenu(){ if (relMenu){ relMenu.remove(); relMenu = null; relTarget = null; } }
 function applyRelDate(dt){
   setPicker(fpById[relTarget], relTarget, dt);
+  if (relTarget === "boardStart" || relTarget === "boardEnd") boardAuto = false;  // user took control of the board range
   hideErr();
   closeRelMenu();
 }
@@ -440,6 +442,11 @@ function boardMsg(t){ return `<tr><td colspan="7" class="dash" style="padding:14
 async function boardLoad(){
   const list = $("#boardList");
   if (!list) return;
+  if (boardAuto){                                   // always keep the board on this week-to-date
+    const today = new Date(); today.setHours(0,0,0,0);
+    setPicker(fpById["boardStart"], "boardStart", startOfWeek(today));
+    setPicker(fpById["boardEnd"], "boardEnd", today);
+  }
   const s = pickerISO("boardStart"), e = pickerISO("boardEnd");
   if (!s || !e){ list.innerHTML = boardMsg("Pick a start and end date."); return; }
   if (e < s){ list.innerHTML = boardMsg("End date can’t be before the start date."); return; }
@@ -482,8 +489,8 @@ $("#applyRange").addEventListener("click", load);
 $("#refresh").addEventListener("click", load);
 $("#autoRefresh").addEventListener("change", () => armAuto());
 $("#boardToggle").addEventListener("click", toggleBoard);
-$("#boardApply").addEventListener("click", boardLoad);
-["boardStart","boardEnd"].forEach(id => { const el = $("#"+id); if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") boardLoad(); }); });
+$("#boardApply").addEventListener("click", () => { boardAuto = false; boardLoad(); });
+["boardStart","boardEnd"].forEach(id => { const el = $("#"+id); if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") { boardAuto = false; boardLoad(); } }); });
 document.querySelectorAll("th[data-sort]").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.getAttribute("data-sort");
@@ -499,7 +506,7 @@ initDatePickers();
   const today = new Date(); today.setHours(0,0,0,0);
   setPicker(fpStart, "startDate", today);
   setPicker(fpEnd, "endDate", today);
-  setPicker(fpById["boardStart"], "boardStart", today);
+  setPicker(fpById["boardStart"], "boardStart", startOfWeek(today));   // board defaults to week-to-date
   setPicker(fpById["boardEnd"], "boardEnd", today);
 })();
 load();
