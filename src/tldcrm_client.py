@@ -390,6 +390,7 @@ class TLDCRMClient:
 
         recent = [{
             "date_sold": r.get("date_sold"),
+            "lead_id": r.get("lead_id"),
             "agent": r.get("agent_name") or r.get("agent"),
             "agent_commission": _num(r.get("commission_paid")),
             "enroller": r.get("fronter_name") or r.get("fronter"),

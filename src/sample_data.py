@@ -22,12 +22,12 @@ def get_sample_dashboard(range_label="This Month"):
             {"label": "Other", "count": 19, "enrolled": 3},
         ],
         "recent_sales": [
-            {"date_sold": "Jun 24", "agent": "Maria Alvarez", "agent_commission": 80.00, "enroller": "Carlos Ruiz", "fronter_commission": 30.00, "carrier": "Aetna"},
-            {"date_sold": "Jun 24", "agent": "David Chen", "agent_commission": 75.00, "enroller": "Tina Brooks", "fronter_commission": 28.00, "carrier": "UnitedHealthcare"},
-            {"date_sold": "Jun 24", "agent": "Sarah Johnson", "agent_commission": 60.00, "enroller": None, "fronter_commission": None, "carrier": "Guarantee Trust Life"},
-            {"date_sold": "Jun 23", "agent": "James Okafor", "agent_commission": 82.50, "enroller": "Marcus Lee", "fronter_commission": 30.00, "carrier": "Cigna"},
-            {"date_sold": "Jun 23", "agent": "Priya Patel", "agent_commission": 70.00, "enroller": "Carlos Ruiz", "fronter_commission": 25.00, "carrier": "WellCare"},
-            {"date_sold": "Jun 23", "agent": "Luis Romero", "agent_commission": 78.00, "enroller": "Tina Brooks", "fronter_commission": 30.00, "carrier": "Humana"},
+            {"date_sold": "Jun 24", "lead_id": 143634913, "agent": "Maria Alvarez", "agent_commission": 80.00, "enroller": "Carlos Ruiz", "fronter_commission": 30.00, "carrier": "Aetna"},
+            {"date_sold": "Jun 24", "lead_id": 143634871, "agent": "David Chen", "agent_commission": 75.00, "enroller": "Tina Brooks", "fronter_commission": 28.00, "carrier": "UnitedHealthcare"},
+            {"date_sold": "Jun 24", "lead_id": 143634802, "agent": "Sarah Johnson", "agent_commission": 60.00, "enroller": None, "fronter_commission": None, "carrier": "Guarantee Trust Life"},
+            {"date_sold": "Jun 23", "lead_id": 143634399, "agent": "James Okafor", "agent_commission": 82.50, "enroller": "Marcus Lee", "fronter_commission": 30.00, "carrier": "Cigna"},
+            {"date_sold": "Jun 23", "lead_id": 143634120, "agent": "Priya Patel", "agent_commission": 70.00, "enroller": "Carlos Ruiz", "fronter_commission": 25.00, "carrier": "WellCare"},
+            {"date_sold": "Jun 23", "lead_id": 143633988, "agent": "Luis Romero", "agent_commission": 78.00, "enroller": "Tina Brooks", "fronter_commission": 30.00, "carrier": "Humana"},
         ],
         "agents": [
             {"name": "Maria Alvarez", "calls": 412, "talk_time": "14h 10m", "policies": 41, "conversion": 19.8, "cost": 754, "cpa": 18.40},
