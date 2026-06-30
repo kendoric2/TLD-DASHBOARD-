@@ -46,6 +46,15 @@ header{
 }
 .btn:hover{background:rgba(255,255,255,.24)}
 .range:focus,.btn:focus{outline:2px solid #fff}
+/* Custom From/To date range (shown when "Custom…" is selected) */
+.custom-range{display:flex;align-items:center;gap:6px}
+.datein{
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);
+  color:#fff;border-radius:9px;padding:7px 9px;font-size:13px;cursor:pointer;
+  color-scheme:dark;   /* keeps the native calendar icon legible on the dark header */
+}
+.datein:focus{outline:2px solid #fff}
+.custom-range .to{color:#fff;opacity:.85;font-size:13px}
 .updated{font-size:12px;opacity:.85;text-align:right}
 .auto{
   display:flex;align-items:center;gap:6px;font-size:13px;color:#fff;

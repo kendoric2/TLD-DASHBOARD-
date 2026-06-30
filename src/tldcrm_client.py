@@ -334,8 +334,8 @@ class TLDCRMClient:
         sales, calls = _t("sales"), _t("calls_billable")
         return round(sales / calls * 100, 1) if calls else 0.0
 
-    def build_dashboard(self, range_key, range_label):
-        start, end = date_range_for(range_key)
+    def build_dashboard(self, start, end, range_label):
+        # start/end are resolved ISO dates (preset or custom) — see app._resolve_range.
 
         # Disk cache: a fully-past range is final, so reuse the saved result and skip
         # every API call. Ranges that include today fall through and load live.

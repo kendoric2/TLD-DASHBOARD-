@@ -12,20 +12,49 @@ let sortKey = "policies", sortDir = -1;
 let autoTimer = null;     // handle for the auto-refresh interval
 const AUTO_MS = 30000;    // auto-refresh every 30 seconds
 
+// Local YYYY-MM-DD for "today" (used to skip auto-refresh on a finished custom range).
+function todayISO(){ const d = new Date(); return new Date(d - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+
+// The current selection: a preset key, or a custom range with explicit From/To dates.
+// `token` uniquely identifies the selection so refresh + stale checks work for custom too.
+function currentSel(){
+  const key = $("#range").value;
+  if (key === "custom"){
+    const s = $("#startDate").value, e = $("#endDate").value;
+    return { key, start: s, end: e, token: `custom:${s}:${e}` };
+  }
+  return { key, start: null, end: null, token: key };
+}
+function qsFor(sel){
+  return sel.key === "custom"
+    ? `range=custom&start=${encodeURIComponent(sel.start)}&end=${encodeURIComponent(sel.end)}`
+    : `range=${encodeURIComponent(sel.key)}`;
+}
+function showErr(msg){ const b = $("#errbar"); b.hidden = false; b.textContent = msg; }
+function hideErr(){ $("#errbar").hidden = true; }
+function validCustom(sel){
+  if (!sel.start || !sel.end){ showErr("Pick both a start and end date."); return false; }
+  if (sel.end < sel.start){ showErr("End date can’t be before the start date."); return false; }
+  if ((new Date(sel.end) - new Date(sel.start)) / 86400000 > 366){ showErr("Custom range can’t exceed 12 months."); return false; }
+  return true;
+}
+
 async function load() {
-  const range = $("#range").value;
+  const sel = currentSel();
+  if (sel.key === "custom" && !validCustom(sel)){ $("#footer").textContent = "Pick a valid date range, then Apply."; return; }
   // On a same-range refresh, keep the last-known COST/CPA so the columns don't blink
   // to "…" every 30s — phase 2 refreshes them from the (warm) cache right after.
-  const sameRange = lastData && lastData._range === range;
+  const sameRange = lastData && lastData._range === sel.token;
   const prevCPA = {};
   if (sameRange) (lastData.agents || []).forEach(a => {
     if (a.cost !== undefined) prevCPA[a.name] = {cost: a.cost, cpa: a.cpa};
   });
   $("#footer").textContent = "Loading…";
   try {
-    const res = await fetch(`/api/dashboard?range=${encodeURIComponent(range)}`);
+    const res = await fetch(`/api/dashboard?${qsFor(sel)}`);
     const data = await res.json();
-    data._range = range;
+    if (data.error && !data.kpis){ showErr(data.error); $("#footer").textContent = "—"; return; }
+    data._range = sel.token;
     if (sameRange) {                  // carry forward CPA so a refresh doesn't flicker
       (data.agents || []).forEach(a => { const p = prevCPA[a.name]; if (p) { a.cost = p.cost; a.cpa = p.cpa; } });
       if (lastData.kpis) { data.kpis.total_spend = lastData.kpis.total_spend; data.kpis.blended_cpa = lastData.kpis.blended_cpa; }
@@ -33,32 +62,36 @@ async function load() {
     }
     lastData = data;
     render(data);
-    if (!data.demo) loadCPA(range);   // phase 2: fill/refresh COST/CPA + cost tiles without blocking paint
+    if (!data.demo) loadCPA(sel);   // phase 2: fill/refresh COST/CPA + cost tiles without blocking paint
   } catch (e) {
     $("#errbar").hidden = false;
     $("#errbar").textContent = "Could not reach the backend: " + e;
     $("#footer").textContent = "Offline.";
   } finally {
-    armAuto();   // (re)start the 30s countdown if Auto is ticked
+    armAuto(sel);   // (re)start the 30s countdown if Auto is ticked (skipped for finished custom ranges)
   }
 }
 
 /* Auto-refresh: while the box is ticked, reload every 30s. Re-arming on each
    load means the gap is always 30s since the last refresh (manual or auto). */
-function armAuto() {
+function armAuto(sel) {
+  sel = sel || currentSel();
   clearInterval(autoTimer);
   autoTimer = null;
-  if ($("#autoRefresh").checked) autoTimer = setInterval(load, AUTO_MS);
+  if (!$("#autoRefresh").checked) return;
+  // a finished (past) custom range can't change — don't poll it
+  if (sel.key === "custom" && sel.end && sel.end < todayISO()) return;
+  autoTimer = setInterval(load, AUTO_MS);
 }
 
 /* Phase 2: the heavy CPA report (COST, CPA, Total Spend, Blended CPA) loads on its
    own so it never blocks first paint. Those fields show "…" until this returns —
    which is instant once the server-side cache is warm. */
-async function loadCPA(range) {
+async function loadCPA(sel) {
   try {
-    const res = await fetch(`/api/agent_cpa?range=${encodeURIComponent(range)}`);
+    const res = await fetch(`/api/agent_cpa?${qsFor(sel)}`);
     const cpa = await res.json();
-    if (!lastData || range !== $("#range").value) return;   // ignore stale result after a range switch
+    if (!lastData || sel.token !== currentSel().token) return;   // ignore stale result after a change
     applyCPA(cpa);
   } catch (e) { /* leave the "…" placeholders — not fatal */ }
 }
@@ -271,9 +304,24 @@ function renderAgents(rows) {
 }
 
 /* ---- GUI events ---- */
-$("#range").addEventListener("change", load);
+function onRangeChange(){
+  const isCustom = $("#range").value === "custom";
+  $("#customRange").hidden = !isCustom;
+  if (isCustom){
+    if (!$("#startDate").value) $("#startDate").value = todayISO();
+    if (!$("#endDate").value) $("#endDate").value = todayISO();
+    hideErr();
+    $("#footer").textContent = "Pick a date range, then Apply.";
+  } else {
+    hideErr();
+    load();                                  // presets load immediately
+  }
+}
+$("#range").addEventListener("change", onRangeChange);
+$("#applyRange").addEventListener("click", load);
+["startDate","endDate"].forEach(id => $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") load(); }));
 $("#refresh").addEventListener("click", load);
-$("#autoRefresh").addEventListener("change", armAuto);
+$("#autoRefresh").addEventListener("change", () => armAuto());
 document.querySelectorAll("th[data-sort]").forEach(th => {
   th.addEventListener("click", () => {
     const k = th.getAttribute("data-sort");

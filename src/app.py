@@ -18,6 +18,7 @@ JavaScript (static/dashboard.js)        =  GUI LAYER
 Runs in DEMO mode (sample data) until TLD credentials are filled into .env.
 """
 import os
+import datetime
 import threading
 import webbrowser
 from flask import Flask, jsonify, render_template, request
@@ -47,6 +48,46 @@ RANGE_LABELS = {
     "this_quarter": "This Quarter",
 }
 
+MAX_RANGE_DAYS = 366   # cap a custom From/To range at ~12 months
+
+
+def _parse_iso(s):
+    """Parse 'YYYY-MM-DD' to a date, or None if blank/invalid."""
+    try:
+        return datetime.date.fromisoformat((s or "").strip())
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _custom_label(a, b):
+    """Readable label for a custom range, e.g. 'Jun 1 – Jun 15, 2026'."""
+    if a == b:
+        return f"{a.strftime('%b')} {a.day}, {a.year}"
+    if a.year == b.year:
+        return f"{a.strftime('%b')} {a.day} – {b.strftime('%b')} {b.day}, {b.year}"
+    return f"{a.strftime('%b')} {a.day}, {a.year} – {b.strftime('%b')} {b.day}, {b.year}"
+
+
+def _resolve_range(args):
+    """Resolve request args to (start_iso, end_iso, label). Supports presets
+    (range=today…) and a custom From/To range (range=custom&start=&end=).
+    Raises ValueError on bad custom input."""
+    range_key = args.get("range", "today")
+    if range_key == "custom":
+        a, b = _parse_iso(args.get("start")), _parse_iso(args.get("end"))
+        if not a or not b:
+            raise ValueError("Custom range needs a valid start and end date (YYYY-MM-DD).")
+        if b < a:
+            raise ValueError("End date can't be before the start date.")
+        if (b - a).days > MAX_RANGE_DAYS:
+            raise ValueError("Custom range can't exceed 12 months.")
+        return a.isoformat(), b.isoformat(), _custom_label(a, b)
+    if date_range_for is None:
+        today = datetime.date.today().isoformat()
+        return today, today, RANGE_LABELS.get(range_key, "Today")
+    start, end = date_range_for(range_key)
+    return start, end, RANGE_LABELS.get(range_key, "Today")
+
 
 def _client():
     """Return a live client if credentials are configured, else None (demo)."""
@@ -63,27 +104,25 @@ def index():
 
 @app.route("/api/dashboard")
 def api_dashboard():
-    range_key = request.args.get("range", "today")
-    label = RANGE_LABELS.get(range_key, "Today")
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     client = _client()
     if client is None:
         data = get_sample_dashboard(label)               # demo mode
-        if date_range_for:
-            s, e = date_range_for(range_key)
-            data["date_range"] = {"start": s, "end": e}
+        data["date_range"] = {"start": start, "end": end}
         return jsonify(data)
 
     try:
-        return jsonify(client.build_dashboard(range_key, label))
+        return jsonify(client.build_dashboard(start, end, label))
     except Exception as e:
         # Never break the UI: fall back to sample data and surface the error
         data = get_sample_dashboard(label)
         data["demo"] = True
         data["error"] = f"Live pull failed, showing sample data: {e}"
-        if date_range_for:
-            s, e2 = date_range_for(range_key)
-            data["date_range"] = {"start": s, "end": e2}
+        data["date_range"] = {"start": start, "end": end}
         return jsonify(data)
 
 
@@ -92,13 +131,14 @@ def api_agent_cpa():
     """Lazy endpoint for the heavy CPA report. The page renders first from /api/dashboard,
     then fetches this to fill COST/CPA + the Total Spend / Blended CPA tiles. Cached
     server-side (5 min), so after the first call it returns instantly."""
-    range_key = request.args.get("range", "today")
     client = _client()
-    if client is None or date_range_for is None:
+    if client is None:
         return jsonify({"by_agent": {}, "totals": {}})    # demo: sample data already carries CPA/COST
     try:
-        s, e = date_range_for(range_key)
-        return jsonify(client.agent_cpa(s, e))
+        start, end, _ = _resolve_range(request.args)
+        return jsonify(client.agent_cpa(start, end))
+    except ValueError as e:
+        return jsonify({"by_agent": {}, "totals": {}, "error": str(e)}), 400
     except Exception as ex:
         return jsonify({"by_agent": {}, "totals": {}, "error": str(ex)})
 

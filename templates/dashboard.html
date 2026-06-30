@@ -25,7 +25,14 @@
       <option value="this_month">This Month</option>
       <option value="last_month">Last Month</option>
       <option value="this_quarter">This Quarter</option>
+      <option value="custom">Custom…</option>
     </select>
+    <span class="custom-range" id="customRange" hidden>
+      <input type="date" id="startDate" class="datein" aria-label="Start date" />
+      <span class="to">to</span>
+      <input type="date" id="endDate" class="datein" aria-label="End date" />
+      <button class="btn" id="applyRange">Apply</button>
+    </span>
     <button class="btn" id="refresh">&#8635; Refresh</button>
     <label class="auto" title="Automatically refresh the data every 30 seconds">
       <input type="checkbox" id="autoRefresh" checked />

@@ -18,7 +18,7 @@ live.
 - **Agent Performance** — a sortable, scrollable table of each agent's Policies Sold, COST,
   and CPA, with a pinned **Totals** row and the agent count by the title.
 - **Date range + auto-refresh** — switch between Today (default), This Week, This Month,
-  Last Month, and This Quarter; optional 30-second auto-refresh.
+  Last Month, This Quarter, or a custom **From/To** range; optional 30-second auto-refresh.
 
 ## Quick start
 
