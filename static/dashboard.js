@@ -340,7 +340,24 @@ function renderCarrierChart(id, rows) {
         renderCarrierDetail(rows[i], i);
       },
       plugins: {
-        legend: { position: "right", labels: { boxWidth: 12, padding: 10, font: { size: 12 } } },
+        legend: {
+          position: "right",
+          labels: {
+            boxWidth: 12, padding: 10, font: { size: 12 },
+            // show each carrier's deal count in the legend, e.g. "UHC - 10"
+            generateLabels(chart){
+              const ds = chart.data.datasets[0];
+              return chart.data.labels.map((label, i) => ({
+                text: `${label} - ${Number(ds.data[i] || 0).toLocaleString()}`,
+                fillStyle: ds.backgroundColor[i],
+                strokeStyle: ds.backgroundColor[i],
+                lineWidth: 0,
+                hidden: !chart.getDataVisibility(i),
+                index: i,
+              }));
+            },
+          },
+        },
         tooltip: {
           callbacks: {
             // e.g. "Humana"  ->  " 17,570 policies · 38.3% of 45,840"
