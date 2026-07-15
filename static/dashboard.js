@@ -8,6 +8,8 @@ const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).tr
 
 let charts = {};          // keep chart instances so we can destroy before redraw
 let selectedCarrier = null;  // carrier slice currently shown in the detail panel
+let selectedState = null;    // state currently shown in the map's detail panel
+let stateByAbbr = {};        // state abbr -> its breakdown, for click-through
 let boardOpen = true;     // sales board expanded (true) or collapsed to its tab (false)
 let boardAuto = true;     // board auto-anchors to this-week-to-date until the user picks a custom range
 let lastData = null;      // cache for client-side sorting
@@ -406,12 +408,13 @@ const STATE_ABBR = {
   "South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA",
   "Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY","Puerto Rico":"PR"
 };
+const STATE_NAME = Object.fromEntries(Object.entries(STATE_ABBR).map(([n, a]) => [a, n]));
 
 function renderStateList(byState){
   const el = $("#stateList");
   if (!el) return;
   el.innerHTML = (byState && byState.length)
-    ? byState.map(s => `<span class="st">${s.state} <b>${(s.count || 0).toLocaleString()}</b></span>`).join("")
+    ? byState.map(s => `<span class="st" data-state="${s.state}">${s.state} <b>${(s.count || 0).toLocaleString()}</b></span>`).join("")
     : '<span class="dash">No production in this range.</span>';
 }
 function showStateFallback(on){
@@ -429,10 +432,12 @@ async function loadUSTopo(){
 async function renderStates(byState){
   byState = byState || [];
   renderStateList(byState);                         // keep the fallback list ready
+  const counts = {};
+  stateByAbbr = {};
+  byState.forEach(s => { const a = String(s.state || "").toUpperCase(); counts[a] = s.count || 0; stateByAbbr[a] = s; });
+  renderStateDetail(selectedState ? stateByAbbr[selectedState] : null);   // restore selection or prompt
   const canvas = $("#stateMap");
   if (typeof ChartGeo === "undefined" || !canvas){ showStateFallback(true); return; }
-  const counts = {};
-  byState.forEach(s => counts[String(s.state || "").toUpperCase()] = s.count || 0);
   try {
     if (!_geoRegistered){
       Chart.register(ChartGeo.ChoroplethController, ChartGeo.GeoFeature, ChartGeo.ColorScale, ChartGeo.ProjectionScale);
@@ -454,6 +459,13 @@ async function renderStates(byState){
         maintainAspectRatio: false,
         showOutline: true,
         showGraticule: false,
+        onHover(evt, els){ if (evt.native) evt.native.target.style.cursor = els.length ? "pointer" : "default"; },
+        onClick(evt, els){
+          if (!els.length) return;
+          const abbr = STATE_ABBR[feats[els[0].index].properties.name];
+          selectedState = abbr;
+          renderStateDetail(stateByAbbr[abbr] || {state: abbr, count: 0, enrolled: 0, carriers: [], agents: []});
+        },
         plugins: {
           legend: { display: false },
           tooltip: { callbacks: { label(ctx){
@@ -477,6 +489,25 @@ async function renderStates(byState){
   } catch (e){
     showStateFallback(true);                        // map couldn't render → show the list instead
   }
+}
+
+// Click-through panel for a state — Total Deals, Enrolled %, and its carrier + agent breakdown.
+function renderStateDetail(obj){
+  const el = $("#stateDetail");
+  if (!el) return;
+  if (!obj){ el.innerHTML = '<div class="cd-hint">Click a state for its breakdown</div>'; return; }
+  const total = obj.count || 0, enr = obj.enrolled || 0;
+  const pct = total ? (enr / total * 100).toFixed(1) : "0.0";
+  const cars = (obj.carriers || []).slice(0, 6).map(c => `${c.label} ${c.count}`).join(" · ") || "—";
+  const ags = (obj.agents || []).slice(0, 6).map(a => `${a.name} ${a.count}`).join(" · ") || "—";
+  el.innerHTML = `
+    <div class="cd-name">${STATE_NAME[obj.state] || obj.state}</div>
+    <div class="cd-stats">
+      <div><div class="cd-v">${total.toLocaleString()}</div><div class="cd-l">Total Deals</div></div>
+      <div><div class="cd-v">${enr.toLocaleString()}</div><div class="cd-l">Enrolled · ${pct}%</div></div>
+    </div>
+    <div class="sd-row"><span class="sd-k">Carriers</span>${cars}</div>
+    <div class="sd-row"><span class="sd-k">Agents</span>${ags}</div>`;
 }
 
 function renderEnrollments(e) {
@@ -594,6 +625,11 @@ $("#applyRange").addEventListener("click", load);
 ["startDate","endDate"].forEach(id => $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") load(); }));
 $("#refresh").addEventListener("click", load);
 $("#autoRefresh").addEventListener("change", () => armAuto());
+$("#stateList")?.addEventListener("click", e => {   // list fallback is clickable too
+  const el = e.target.closest(".st"); if (!el) return;
+  selectedState = el.getAttribute("data-state");
+  renderStateDetail(stateByAbbr[selectedState]);
+});
 $("#boardToggle").addEventListener("click", toggleBoard);
 $("#boardApply").addEventListener("click", () => { boardAuto = false; boardLoad(); });
 ["boardStart","boardEnd"].forEach(id => { const el = $("#"+id); if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") { boardAuto = false; boardLoad(); } }); });

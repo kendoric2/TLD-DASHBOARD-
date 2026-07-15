@@ -539,16 +539,30 @@ def _carrier_breakdown(deduped_rows):
 
 
 def _state_breakdown(rows):
-    """Deal count per customer state (lead_state) from already-deduped, GTL-excluded rows,
-    so state totals reconcile with Policies Sold. 2-letter, uppercased; blanks skipped.
-    Sorted high to low."""
-    by = {}
+    """Per customer-state (lead_state) breakdown from already-deduped, GTL-excluded rows, so
+    state totals reconcile with Policies Sold. Each entry has the deal count plus everything
+    needed for a click-through: {state, count, enrolled, carriers:[{label,count}],
+    agents:[{name,count}]}. Sorted high to low by count."""
+    st = {}
     for r in rows:
-        st = str(r.get("lead_state") or "").strip().upper()
-        if not st:
+        state = str(r.get("lead_state") or "").strip().upper()
+        if not state:
             continue
-        by[st] = by.get(st, 0) + 1
-    out = [{"state": k, "count": v} for k, v in by.items()]
+        s = st.setdefault(state, {"state": state, "count": 0, "enrolled": 0, "_car": {}, "_ag": {}})
+        s["count"] += 1
+        if str(r.get("fronter_id") or "").strip() not in ("", "0"):
+            s["enrolled"] += 1
+        car = str(r.get("carrier_name") or "").strip() or "—"
+        s["_car"][car] = s["_car"].get(car, 0) + 1
+        ag = str(r.get("agent_name") or "").strip()
+        if ag:
+            s["_ag"][ag] = s["_ag"].get(ag, 0) + 1
+    out = []
+    for s in st.values():
+        carriers = sorted(({"label": k, "count": v} for k, v in s["_car"].items()), key=lambda x: -x["count"])
+        agents = sorted(({"name": k, "count": v} for k, v in s["_ag"].items()), key=lambda x: -x["count"])
+        out.append({"state": s["state"], "count": s["count"], "enrolled": s["enrolled"],
+                    "carriers": carriers, "agents": agents})
     out.sort(key=lambda x: -x["count"])
     return out
 
