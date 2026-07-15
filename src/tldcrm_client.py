@@ -386,6 +386,7 @@ class TLDCRMClient:
         policies = len(kept_policies)
         enrollments = enrollment_tracker(kept_policies)
         by_carrier = _carrier_breakdown(deduped_all)     # all carriers incl GTL -> matches table
+        by_state = _state_breakdown(kept_policies)       # deals per customer state (GTL-excluded)
         agents = _agent_breakdown(kept_policies)         # GTL-excluded -> agent total = Policies Sold
 
         recent = [{
@@ -412,6 +413,7 @@ class TLDCRMClient:
                 # conversion_rate loads in phase 2 (it needs the heavy report) — see /api/agent_cpa
             },
             "by_carrier": by_carrier,
+            "by_state": by_state,
             "recent_sales": recent,
             "agents": agents,
             "enrollments": enrollments,
@@ -532,6 +534,21 @@ def _carrier_breakdown(deduped_rows):
         if str(r.get("fronter_id") or "").strip() not in ("", "0"):
             g["enrolled"] += 1
     out = list(by.values())
+    out.sort(key=lambda x: -x["count"])
+    return out
+
+
+def _state_breakdown(rows):
+    """Deal count per customer state (lead_state) from already-deduped, GTL-excluded rows,
+    so state totals reconcile with Policies Sold. 2-letter, uppercased; blanks skipped.
+    Sorted high to low."""
+    by = {}
+    for r in rows:
+        st = str(r.get("lead_state") or "").strip().upper()
+        if not st:
+            continue
+        by[st] = by.get(st, 0) + 1
+    out = [{"state": k, "count": v} for k, v in by.items()]
     out.sort(key=lambda x: -x["count"])
     return out
 

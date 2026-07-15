@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4/dist/index.umd.min.js"></script>
 </head>
 <body>
 <header>
@@ -60,6 +61,13 @@
       <div class="enroll-total">Total <b id="enrollTotal">—</b></div>
       <div class="enroll-list" id="enrollList"></div>
     </div>
+  </div>
+
+  <div class="section-title">Production by State · <span class="rangeLabel">Today</span>
+    <span class="hint">— deals by customer state</span></div>
+  <div class="card">
+    <div class="state-wrap"><canvas id="stateMap"></canvas></div>
+    <div class="state-list" id="stateList" hidden></div>
   </div>
 
   <section class="board-section" id="boardSection">

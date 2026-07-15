@@ -21,6 +21,11 @@ def get_sample_dashboard(range_label="This Month"):
             {"label": "WellCare", "count": 28, "enrolled": 6},
             {"label": "Other", "count": 19, "enrolled": 3},
         ],
+        "by_state": [
+            {"state": "TX", "count": 42}, {"state": "FL", "count": 31}, {"state": "GA", "count": 18},
+            {"state": "OH", "count": 12}, {"state": "NC", "count": 9}, {"state": "PA", "count": 7},
+            {"state": "AZ", "count": 5}, {"state": "MI", "count": 4}, {"state": "TN", "count": 3},
+        ],
         "recent_sales": [
             {"date_sold": "Jun 24", "lead_id": 143634913, "agent": "Maria Alvarez", "agent_commission": 80.00, "enroller": "Carlos Ruiz", "fronter_commission": 30.00, "carrier": "Aetna"},
             {"date_sold": "Jun 24", "lead_id": 143634871, "agent": "David Chen", "agent_commission": 75.00, "enroller": "Tina Brooks", "fronter_commission": 28.00, "carrier": "UnitedHealthcare"},

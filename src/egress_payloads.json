@@ -14,7 +14,7 @@
     "policies_ids": {
       "endpoint": "policies",
       "date_bounded": true,
-      "payload": { "columns": ["policy_id", "lead_id", "carrier_name", "fronter_id", "fronter_name", "stage", "agent_name", "commission_paid", "commission_paid_fronter"], "limit": 200000 }
+      "payload": { "columns": ["policy_id", "lead_id", "carrier_name", "fronter_id", "fronter_name", "stage", "agent_name", "commission_paid", "commission_paid_fronter", "lead_state"], "limit": 200000 }
     },
 
     "billable_leads_count": {

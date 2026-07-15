@@ -255,6 +255,7 @@ function render(d) {
   renderKPIs(d.kpis);
   renderCarrierChart("carrier", d.by_carrier);
   renderEnrollments(d.enrollments);
+  renderStates(d.by_state);
   renderRecent(d.recent_sales);
   renderAgents(d.agents);
 
@@ -389,6 +390,93 @@ function renderCarrierDetail(row, i){
       <div><div class="cd-v">${total.toLocaleString()}</div><div class="cd-l">Total Deals</div></div>
       <div><div class="cd-v">${enr.toLocaleString()}</div><div class="cd-l">Enrolled · ${pct}%</div></div>
     </div>`;
+}
+
+/* ===== Production by State: US choropleth (chartjs-chart-geo) + ranked-list fallback ===== */
+let _usTopo = null, _geoRegistered = false;
+const US_TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
+const STATE_ABBR = {
+  "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO",
+  "Connecticut":"CT","Delaware":"DE","District of Columbia":"DC","Florida":"FL","Georgia":"GA",
+  "Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS","Kentucky":"KY",
+  "Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA","Michigan":"MI","Minnesota":"MN",
+  "Mississippi":"MS","Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH",
+  "New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND",
+  "Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC",
+  "South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA",
+  "Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY","Puerto Rico":"PR"
+};
+
+function renderStateList(byState){
+  const el = $("#stateList");
+  if (!el) return;
+  el.innerHTML = (byState && byState.length)
+    ? byState.map(s => `<span class="st">${s.state} <b>${(s.count || 0).toLocaleString()}</b></span>`).join("")
+    : '<span class="dash">No production in this range.</span>';
+}
+function showStateFallback(on){
+  const wrap = document.querySelector(".state-wrap");
+  if (wrap) wrap.style.display = on ? "none" : "";
+  const list = $("#stateList");
+  if (list) list.hidden = !on;
+}
+async function loadUSTopo(){
+  if (_usTopo) return _usTopo;
+  const us = await fetch(US_TOPO_URL).then(r => r.json());
+  _usTopo = ChartGeo.topojson.feature(us, us.objects.states).features;
+  return _usTopo;
+}
+async function renderStates(byState){
+  byState = byState || [];
+  renderStateList(byState);                         // keep the fallback list ready
+  const canvas = $("#stateMap");
+  if (typeof ChartGeo === "undefined" || !canvas){ showStateFallback(true); return; }
+  const counts = {};
+  byState.forEach(s => counts[String(s.state || "").toUpperCase()] = s.count || 0);
+  try {
+    if (!_geoRegistered){
+      Chart.register(ChartGeo.ChoroplethController, ChartGeo.GeoFeature, ChartGeo.ColorScale, ChartGeo.ProjectionScale);
+      _geoRegistered = true;
+    }
+    const feats = await loadUSTopo();
+    const max = Math.max(1, ...Object.values(counts));
+    charts.stateMap?.destroy();
+    charts.stateMap = new Chart(canvas, {
+      type: "choropleth",
+      data: {
+        labels: feats.map(f => f.properties.name),
+        datasets: [{
+          outline: feats,
+          data: feats.map(f => ({ feature: f, value: counts[STATE_ABBR[f.properties.name]] || 0 })),
+        }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        showOutline: true,
+        showGraticule: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label(ctx){
+            const v = (ctx.raw && ctx.raw.value) || 0;
+            const nm = ctx.raw && ctx.raw.feature && ctx.raw.feature.properties.name;
+            return ` ${nm}: ${v.toLocaleString()} deal${v === 1 ? '' : 's'}`;
+          } } },
+        },
+        scales: {
+          projection: { axis: "x", projection: "albersUsa" },
+          color: {
+            axis: "x",
+            domain: [0, max],
+            interpolate: (t) => `rgba(0,162,72,${(0.10 + 0.90 * (t || 0)).toFixed(3)})`,
+            legend: { display: false },
+          },
+        },
+      },
+    });
+    showStateFallback(false);
+  } catch (e){
+    showStateFallback(true);                        // map couldn't render → show the list instead
+  }
 }
 
 function renderEnrollments(e) {

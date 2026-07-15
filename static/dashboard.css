@@ -135,6 +135,13 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .board-section.collapsed .board-body,.board-section.collapsed .board-range{display:none}
 .bd-car{color:var(--muted);font-size:12.5px}
 
+/* Production by State — US heat map, with a ranked-list fallback if the map can't draw */
+.state-wrap{position:relative;height:360px}
+.state-list{display:flex;flex-wrap:wrap;gap:8px 20px;padding:8px 2px}
+.state-list .st{font-size:13.5px;color:var(--text)}
+.state-list .st b{color:var(--brand-dark);font-variant-numeric:tabular-nums}
+.state-list .dash{color:var(--muted)}
+
 /* Enrollment tracker (in the card next to Policies by Carrier) */
 .enroll-total{font-size:13px;color:var(--muted);margin:-4px 0 10px}
 .enroll-total b{font-size:26px;color:var(--brand-dark);font-weight:800;letter-spacing:-.5px;margin-left:6px;vertical-align:-2px}
