@@ -386,6 +386,7 @@ class TLDCRMClient:
         policies = len(kept_policies)
         enrollments = enrollment_tracker(kept_policies)
         by_carrier = _carrier_breakdown(deduped_all)     # all carriers incl GTL -> matches table
+        active_by_carrier = _active_by_carrier(deduped_all)  # active vs sold per carrier (retention)
         by_state = _state_breakdown(kept_policies)       # deals per customer state (GTL-excluded)
         agents = _agent_breakdown(kept_policies)         # GTL-excluded -> agent total = Policies Sold
 
@@ -413,6 +414,7 @@ class TLDCRMClient:
                 # conversion_rate loads in phase 2 (it needs the heavy report) — see /api/agent_cpa
             },
             "by_carrier": by_carrier,
+            "active_by_carrier": active_by_carrier,
             "by_state": by_state,
             "recent_sales": recent,
             "agents": agents,
@@ -535,6 +537,22 @@ def _carrier_breakdown(deduped_rows):
             g["enrolled"] += 1
     out = list(by.values())
     out.sort(key=lambda x: -x["count"])
+    return out
+
+
+def _active_by_carrier(deduped_rows):
+    """Active-policy breakdown per carrier from already-deduped, stage=sale rows (ALL
+    carriers incl GTL). Per carrier: sold (all stage=sale) and active (status = active),
+    so the tile can show retention (active / sold). Sorted by active count, high to low."""
+    by = {}
+    for r in deduped_rows:
+        car = str(r.get("carrier_name") or "").strip() or "—"
+        c = by.setdefault(car, {"carrier": car, "sold": 0, "active": 0})
+        c["sold"] += 1
+        if str(r.get("status_name") or "").strip().lower() == "active":
+            c["active"] += 1
+    out = list(by.values())
+    out.sort(key=lambda x: -x["active"])
     return out
 
 

@@ -146,6 +146,11 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .sd-row{font-size:13px;color:var(--muted);margin-top:6px}
 .sd-k{display:inline-block;min-width:66px;font-weight:700;color:var(--brand-dark);margin-right:6px}
 
+/* Active Policies tile */
+.active-head{font-size:13px;color:var(--muted);margin:-2px 0 12px}
+.active-head b{font-size:26px;color:var(--brand-dark);font-weight:800;letter-spacing:-.5px;margin:0 6px;vertical-align:-2px}
+.active-of{font-size:13px;color:var(--muted)}
+
 /* Enrollment tracker (in the card next to Policies by Carrier) */
 .enroll-total{font-size:13px;color:var(--muted);margin:-4px 0 10px}
 .enroll-total b{font-size:26px;color:var(--brand-dark);font-weight:800;letter-spacing:-.5px;margin-left:6px;vertical-align:-2px}

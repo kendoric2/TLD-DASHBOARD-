@@ -24,8 +24,8 @@ import metrics
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # src/ -> project root
 CACHE_DIR = os.path.join(_ROOT, "cache")
 SNAPSHOT_PATH = os.path.join(metrics.LOG_DIR, "cache_snapshot.csv")
-SCHEMA_VERSION = 3            # bump this to invalidate every existing cache file at once
-#                              (v3: dashboard payload gained by_state, lead_id, commission, enrollments)
+SCHEMA_VERSION = 4            # bump this to invalidate every existing cache file at once
+#                              (v4: dashboard payload gained active_by_carrier)
 
 
 def is_final_range(end):

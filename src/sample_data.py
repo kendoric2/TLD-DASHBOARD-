@@ -21,6 +21,14 @@ def get_sample_dashboard(range_label="This Month"):
             {"label": "WellCare", "count": 28, "enrolled": 6},
             {"label": "Other", "count": 19, "enrolled": 3},
         ],
+        "active_by_carrier": [
+            {"carrier": "Aetna", "sold": 87, "active": 79},
+            {"carrier": "UnitedHealthcare", "sold": 75, "active": 68},
+            {"carrier": "Humana", "sold": 59, "active": 52},
+            {"carrier": "Cigna", "sold": 44, "active": 39},
+            {"carrier": "WellCare", "sold": 28, "active": 24},
+            {"carrier": "Other", "sold": 19, "active": 15},
+        ],
         "by_state": [
             {"state": "TX", "count": 42, "enrolled": 9,
              "carriers": [{"label": "UHC", "count": 18}, {"label": "Aetna", "count": 12}, {"label": "Humana", "count": 8}, {"label": "Cigna", "count": 4}],

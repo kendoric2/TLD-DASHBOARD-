@@ -257,6 +257,7 @@ function render(d) {
   renderKPIs(d.kpis);
   renderCarrierChart("carrier", d.by_carrier);
   renderEnrollments(d.enrollments);
+  renderActive(d.active_by_carrier);
   renderStates(d.by_state);
   renderRecent(d.recent_sales);
   renderAgents(d.agents);
@@ -537,6 +538,28 @@ function renderRecent(rows) {
       <td>${r.carrier ?? ""}</td>
     </tr>`;
   }).join("");
+}
+
+// Active Policies by carrier — in-force count, total sold, and retention % per carrier.
+function renderActive(rows){
+  rows = rows || [];
+  const totalActive = rows.reduce((a, r) => a + (r.active || 0), 0);
+  const totalSold = rows.reduce((a, r) => a + (r.sold || 0), 0);
+  const pct = totalSold ? Math.round(totalActive / totalSold * 100) : 0;
+  $("#activeTotal").textContent = totalActive.toLocaleString();
+  $("#activeOfSold").textContent = totalSold ? `of ${totalSold.toLocaleString()} sold · ${pct}% still active` : "";
+  const pctCell = (a, s) => s ? Math.round(a / s * 100) + "%" : "—";
+  $("#activeList").innerHTML = rows.length
+    ? rows.map(r => `<tr>
+        <td>${r.carrier}</td>
+        <td class="num">${(r.active || 0).toLocaleString()}</td>
+        <td class="num">${(r.sold || 0).toLocaleString()}</td>
+        <td class="num">${pctCell(r.active, r.sold)}</td>
+      </tr>`).join("")
+    : '<tr><td colspan="4" class="dash" style="padding:14px">No policies in this range.</td></tr>';
+  $("#activeTotals").innerHTML = rows.length
+    ? `<tr><td>Totals</td><td class="num">${totalActive.toLocaleString()}</td><td class="num">${totalSold.toLocaleString()}</td><td class="num">${pct}%</td></tr>`
+    : "";
 }
 
 function renderAgents(rows) {
