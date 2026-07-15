@@ -150,6 +150,12 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .active-head{font-size:13px;color:var(--muted);margin:-2px 0 12px}
 .active-head b{font-size:26px;color:var(--brand-dark);font-weight:800;letter-spacing:-.5px;margin:0 6px;vertical-align:-2px}
 .active-of{font-size:13px;color:var(--muted)}
+#activeList tr{cursor:pointer}
+.ad-list{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px}
+.ad-st{font-size:13px;color:var(--text)}
+.ad-st b{color:var(--brand-dark);font-variant-numeric:tabular-nums}
+.ad-st .sub{color:var(--muted)}
+.cd-sub{font-weight:500;color:var(--muted);font-size:12px}
 
 /* Enrollment tracker (in the card next to Policies by Carrier) */
 .enroll-total{font-size:13px;color:var(--muted);margin:-4px 0 10px}

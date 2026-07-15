@@ -10,6 +10,8 @@ let charts = {};          // keep chart instances so we can destroy before redra
 let selectedCarrier = null;  // carrier slice currently shown in the detail panel
 let selectedState = null;    // state currently shown in the map's detail panel
 let stateByAbbr = {};        // state abbr -> its breakdown, for click-through
+let selectedActiveCarrier = null;  // carrier row selected in the Active Policies tile
+let activeByCarrier = {};          // carrier -> its active breakdown (incl states)
 let boardOpen = true;     // sales board expanded (true) or collapsed to its tab (false)
 let boardAuto = true;     // board auto-anchors to this-week-to-date until the user picks a custom range
 let lastData = null;      // cache for client-side sorting
@@ -540,9 +542,12 @@ function renderRecent(rows) {
   }).join("");
 }
 
-// Active Policies by carrier — in-force count, total sold, and retention % per carrier.
+// Active Policies by carrier — in-force count, total sold, retention % per carrier.
+// Click a carrier row to see its active policies broken down by state.
 function renderActive(rows){
   rows = rows || [];
+  activeByCarrier = {};
+  rows.forEach(r => activeByCarrier[r.carrier] = r);
   const totalActive = rows.reduce((a, r) => a + (r.active || 0), 0);
   const totalSold = rows.reduce((a, r) => a + (r.sold || 0), 0);
   const pct = totalSold ? Math.round(totalActive / totalSold * 100) : 0;
@@ -550,7 +555,7 @@ function renderActive(rows){
   $("#activeOfSold").textContent = totalSold ? `of ${totalSold.toLocaleString()} sold · ${pct}% still active` : "";
   const pctCell = (a, s) => s ? Math.round(a / s * 100) + "%" : "—";
   $("#activeList").innerHTML = rows.length
-    ? rows.map(r => `<tr>
+    ? rows.map(r => `<tr data-carrier="${r.carrier}">
         <td>${r.carrier}</td>
         <td class="num">${(r.active || 0).toLocaleString()}</td>
         <td class="num">${(r.sold || 0).toLocaleString()}</td>
@@ -560,6 +565,19 @@ function renderActive(rows){
   $("#activeTotals").innerHTML = rows.length
     ? `<tr><td>Totals</td><td class="num">${totalActive.toLocaleString()}</td><td class="num">${totalSold.toLocaleString()}</td><td class="num">${pct}%</td></tr>`
     : "";
+  renderActiveDetail(selectedActiveCarrier ? activeByCarrier[selectedActiveCarrier] : null);
+}
+
+// Click-through: a carrier's active policies broken down by state (active / sold per state).
+function renderActiveDetail(c){
+  const el = $("#activeDetail");
+  if (!el) return;
+  if (!c){ el.innerHTML = '<div class="cd-hint">Click a carrier for its active policies by state</div>'; return; }
+  const states = c.states || [];
+  const body = states.length
+    ? states.map(s => `<span class="ad-st">${s.state} <b>${(s.active || 0).toLocaleString()}</b><span class="sub">/${(s.sold || 0).toLocaleString()}</span></span>`).join("")
+    : '<span class="dash">No state data.</span>';
+  el.innerHTML = `<div class="cd-name">${c.carrier} · active by state <span class="cd-sub">(active / sold)</span></div><div class="ad-list">${body}</div>`;
 }
 
 function renderAgents(rows) {
@@ -652,6 +670,11 @@ $("#stateList")?.addEventListener("click", e => {   // list fallback is clickabl
   const el = e.target.closest(".st"); if (!el) return;
   selectedState = el.getAttribute("data-state");
   renderStateDetail(stateByAbbr[selectedState]);
+});
+$("#activeList")?.addEventListener("click", e => {   // carrier row -> active by state
+  const tr = e.target.closest("tr[data-carrier]"); if (!tr) return;
+  selectedActiveCarrier = tr.getAttribute("data-carrier");
+  renderActiveDetail(activeByCarrier[selectedActiveCarrier]);
 });
 $("#boardToggle").addEventListener("click", toggleBoard);
 $("#boardApply").addEventListener("click", () => { boardAuto = false; boardLoad(); });

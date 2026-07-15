@@ -542,16 +542,27 @@ def _carrier_breakdown(deduped_rows):
 
 def _active_by_carrier(deduped_rows):
     """Active-policy breakdown per carrier from already-deduped, stage=sale rows (ALL
-    carriers incl GTL). Per carrier: sold (all stage=sale) and active (status = active),
-    so the tile can show retention (active / sold). Sorted by active count, high to low."""
+    carriers incl GTL). Per carrier: sold (all stage=sale), active (status = active), and a
+    per-state split (states:[{state, active, sold}]) so clicking a carrier can show its
+    active policies by state. Sorted by active count, high to low."""
     by = {}
     for r in deduped_rows:
         car = str(r.get("carrier_name") or "").strip() or "—"
-        c = by.setdefault(car, {"carrier": car, "sold": 0, "active": 0})
+        c = by.setdefault(car, {"carrier": car, "sold": 0, "active": 0, "_st": {}})
         c["sold"] += 1
-        if str(r.get("status_name") or "").strip().lower() == "active":
+        is_active = str(r.get("status_name") or "").strip().lower() == "active"
+        if is_active:
             c["active"] += 1
-    out = list(by.values())
+        state = str(r.get("lead_state") or "").strip().upper()
+        if state:
+            s = c["_st"].setdefault(state, {"state": state, "active": 0, "sold": 0})
+            s["sold"] += 1
+            if is_active:
+                s["active"] += 1
+    out = []
+    for c in by.values():
+        states = sorted(c["_st"].values(), key=lambda x: -x["active"])
+        out.append({"carrier": c["carrier"], "sold": c["sold"], "active": c["active"], "states": states})
     out.sort(key=lambda x: -x["active"])
     return out
 
