@@ -151,6 +151,8 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .active-head b{font-size:26px;color:var(--brand-dark);font-weight:800;letter-spacing:-.5px;margin:0 6px;vertical-align:-2px}
 .active-of{font-size:13px;color:var(--muted)}
 #activeList tr{cursor:pointer}
+#activeList tr.sel{background:#EFF4F9}
+#activeList tr.sel td:first-child{font-weight:700;color:var(--brand-dark)}
 .ad-list{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px}
 .ad-st{font-size:13px;color:var(--text)}
 .ad-st b{color:var(--brand-dark);font-variant-numeric:tabular-nums}

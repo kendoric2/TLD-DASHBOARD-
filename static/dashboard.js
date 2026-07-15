@@ -12,6 +12,7 @@ let selectedState = null;    // state currently shown in the map's detail panel
 let stateByAbbr = {};        // state abbr -> its breakdown, for click-through
 let selectedActiveCarrier = null;  // carrier row selected in the Active Policies tile
 let activeByCarrier = {};          // carrier -> its active breakdown (incl states)
+let activeCombined = null;         // aggregate active-by-state across all carriers (default view)
 let boardOpen = true;     // sales board expanded (true) or collapsed to its tab (false)
 let boardAuto = true;     // board auto-anchors to this-week-to-date until the user picks a custom range
 let lastData = null;      // cache for client-side sorting
@@ -548,14 +549,14 @@ function renderActive(rows){
   rows = rows || [];
   activeByCarrier = {};
   rows.forEach(r => activeByCarrier[r.carrier] = r);
-  const totalActive = rows.reduce((a, r) => a + (r.active || 0), 0);
-  const totalSold = rows.reduce((a, r) => a + (r.sold || 0), 0);
+  activeCombined = combinedActiveStates(rows);
+  const totalActive = activeCombined.active, totalSold = activeCombined.sold;
   const pct = totalSold ? Math.round(totalActive / totalSold * 100) : 0;
   $("#activeTotal").textContent = totalActive.toLocaleString();
   $("#activeOfSold").textContent = totalSold ? `of ${totalSold.toLocaleString()} sold · ${pct}% still active` : "";
   const pctCell = (a, s) => s ? Math.round(a / s * 100) + "%" : "—";
   $("#activeList").innerHTML = rows.length
-    ? rows.map(r => `<tr data-carrier="${r.carrier}">
+    ? rows.map(r => `<tr data-carrier="${r.carrier}"${r.carrier === selectedActiveCarrier ? ' class="sel"' : ''}>
         <td>${r.carrier}</td>
         <td class="num">${(r.active || 0).toLocaleString()}</td>
         <td class="num">${(r.sold || 0).toLocaleString()}</td>
@@ -565,7 +566,23 @@ function renderActive(rows){
   $("#activeTotals").innerHTML = rows.length
     ? `<tr><td>Totals</td><td class="num">${totalActive.toLocaleString()}</td><td class="num">${totalSold.toLocaleString()}</td><td class="num">${pct}%</td></tr>`
     : "";
-  renderActiveDetail(selectedActiveCarrier ? activeByCarrier[selectedActiveCarrier] : null);
+  // no carrier selected -> combined total by state; otherwise that carrier
+  const sel = (selectedActiveCarrier && activeByCarrier[selectedActiveCarrier]) ? activeByCarrier[selectedActiveCarrier] : activeCombined;
+  renderActiveDetail(sel);
+}
+
+// Aggregate active-by-state across ALL carriers — the default view when none is selected.
+function combinedActiveStates(rows){
+  const agg = {};
+  let active = 0, sold = 0;
+  (rows || []).forEach(r => {
+    active += r.active || 0; sold += r.sold || 0;
+    (r.states || []).forEach(s => {
+      const a = agg[s.state] || (agg[s.state] = {state: s.state, active: 0, sold: 0});
+      a.active += s.active || 0; a.sold += s.sold || 0;
+    });
+  });
+  return {carrier: "All carriers", active, sold, states: Object.values(agg).sort((x, y) => y.active - x.active)};
 }
 
 // Click-through: a carrier's active policies broken down by state (active / sold per state).
@@ -671,10 +688,13 @@ $("#stateList")?.addEventListener("click", e => {   // list fallback is clickabl
   selectedState = el.getAttribute("data-state");
   renderStateDetail(stateByAbbr[selectedState]);
 });
-$("#activeList")?.addEventListener("click", e => {   // carrier row -> active by state
+$("#activeList")?.addEventListener("click", e => {   // carrier row -> active by state (click again to deselect)
   const tr = e.target.closest("tr[data-carrier]"); if (!tr) return;
-  selectedActiveCarrier = tr.getAttribute("data-carrier");
-  renderActiveDetail(activeByCarrier[selectedActiveCarrier]);
+  const car = tr.getAttribute("data-carrier");
+  selectedActiveCarrier = (selectedActiveCarrier === car) ? null : car;
+  $("#activeList").querySelectorAll("tr").forEach(row =>
+    row.classList.toggle("sel", !!selectedActiveCarrier && row.getAttribute("data-carrier") === selectedActiveCarrier));
+  renderActiveDetail(selectedActiveCarrier ? activeByCarrier[selectedActiveCarrier] : activeCombined);
 });
 $("#boardToggle").addEventListener("click", toggleBoard);
 $("#boardApply").addEventListener("click", () => { boardAuto = false; boardLoad(); });
