@@ -60,6 +60,7 @@
       <h3>Enrollments · <span class="rangeLabel">Today</span></h3>
       <div class="enroll-total">Total <b id="enrollTotal">—</b></div>
       <div class="enroll-list" id="enrollList"></div>
+      <div class="carrier-detail" id="enrollDetail"></div>
     </div>
   </div>
 
@@ -91,6 +92,7 @@
         <span class="board-caret">&#9662;</span> Sales Board · <span id="boardLabel">Today</span>
       </button>
       <span class="board-range">
+        <select class="board-carrier" id="boardCarrier" aria-label="Filter by carrier"><option value="">All carriers</option></select>
         <span class="dpick">
           <button type="button" class="cal-btn" id="boardStartMenuBtn" aria-label="Start date quick picks" title="Quick picks">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>

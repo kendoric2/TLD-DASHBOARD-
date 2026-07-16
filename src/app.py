@@ -164,7 +164,7 @@ def api_sales_board():
         return jsonify(data)
 
     try:
-        data = client.sales_board(start, end)
+        data = client.sales_board(start, end, request.args.get("carrier") or None)
         data["range_label"] = label
         data["date_range"] = {"start": start, "end": end}
         data["demo"] = False

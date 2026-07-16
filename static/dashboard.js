@@ -13,6 +13,8 @@ let stateByAbbr = {};        // state abbr -> its breakdown, for click-through
 let selectedActiveCarrier = null;  // carrier row selected in the Active Policies tile
 let activeByCarrier = {};          // carrier -> its active breakdown (incl states)
 let activeCombined = null;         // aggregate active-by-state across all carriers (default view)
+let selectedEnroller = null;       // enroller row selected in the Enrollments tile
+let enrollById = {};               // fronter_id -> enroller (incl detail)
 let boardOpen = true;     // sales board expanded (true) or collapsed to its tab (false)
 let boardAuto = true;     // board auto-anchors to this-week-to-date until the user picks a custom range
 let lastData = null;      // cache for client-side sorting
@@ -518,10 +520,25 @@ function renderEnrollments(e) {
   e = e || {total: 0, by_enroller: []};
   $("#enrollTotal").textContent = (e.total || 0).toLocaleString();
   const list = e.by_enroller || [];
+  enrollById = {};
+  list.forEach(g => enrollById[g.fronter_id] = g);
   $("#enrollList").innerHTML = list.length
     ? list.map(g => `
-      <div class="enroll-row"><span class="enroll-name">${g.name ?? g.fronter_id}</span><span class="enroll-count">${(g.count || 0).toLocaleString()}</span></div>`).join("")
+      <div class="enroll-row${g.fronter_id === selectedEnroller ? ' sel' : ''}" data-fid="${g.fronter_id}"><span class="enroll-name">${g.name ?? g.fronter_id}</span><span class="enroll-count">${(g.count || 0).toLocaleString()}</span></div>`).join("")
     : '<div class="dash" style="padding:10px 2px">No enrollments yet</div>';
+  renderEnrollmentDetail(selectedEnroller && enrollById[selectedEnroller] ? enrollById[selectedEnroller] : null);
+}
+
+// Click-through: an enroller's breakdown — who they enrolled for (agent), carrier, and amount.
+function renderEnrollmentDetail(en){
+  const el = $("#enrollDetail");
+  if (!el) return;
+  if (!en){ el.innerHTML = '<div class="cd-hint">Click an enroller for their breakdown</div>'; return; }
+  const detail = en.detail || [];
+  const rows = detail.length
+    ? detail.map(d => `<div class="ed-row"><span>${d.agent} · ${d.carrier}</span><b>${(d.count || 0).toLocaleString()}</b></div>`).join("")
+    : '<div class="dash">No detail.</div>';
+  el.innerHTML = `<div class="cd-name">${en.name || en.fronter_id} · ${en.count} enrolled</div><div class="ed-list">${rows}</div>`;
 }
 
 function renderRecent(rows) {
@@ -646,7 +663,9 @@ async function boardLoad(){
   if (!s || !e){ list.innerHTML = boardMsg("Pick a start and end date."); return; }
   if (e < s){ list.innerHTML = boardMsg("End date can’t be before the start date."); return; }
   try {
-    const res = await fetch(`/api/sales_board?range=custom&start=${s}&end=${e}`);
+    const carrier = $("#boardCarrier") ? $("#boardCarrier").value : "";
+    const qs = `range=custom&start=${s}&end=${e}` + (carrier ? `&carrier=${encodeURIComponent(carrier)}` : "");
+    const res = await fetch(`/api/sales_board?${qs}`);
     const data = await res.json();
     if (data.error && !data.board){ list.innerHTML = boardMsg(data.error); return; }
     renderBoard(data);
@@ -654,6 +673,7 @@ async function boardLoad(){
 }
 function renderBoard(data){
   $("#boardLabel").textContent = data.range_label || "";
+  populateBoardCarriers(data.carriers || []);
   const rows = data.board || [];
   const fmt = n => (n || 0).toLocaleString();
   const money = v => '$' + Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -670,6 +690,15 @@ function renderBoard(data){
       <td class="bd-car">${top ? top + more : '<span class="dash">—</span>'}</td>
     </tr>`;
   }).join("") : boardMsg("No deals in this range.");
+}
+// Fill the board's carrier dropdown from the range's carriers, preserving the current pick.
+function populateBoardCarriers(carriers){
+  const sel = $("#boardCarrier"); if (!sel) return;
+  const existing = Array.from(sel.options).slice(1).map(o => o.value);
+  if (existing.length === carriers.length && existing.every((v, i) => v === carriers[i])) return;
+  const cur = sel.value;
+  sel.innerHTML = ['<option value="">All carriers</option>'].concat(carriers.map(c => `<option value="${c}">${c}</option>`)).join("");
+  sel.value = carriers.includes(cur) ? cur : "";
 }
 function toggleBoard(){
   boardOpen = !boardOpen;
@@ -695,6 +724,15 @@ $("#activeList")?.addEventListener("click", e => {   // carrier row -> active by
   $("#activeList").querySelectorAll("tr").forEach(row =>
     row.classList.toggle("sel", !!selectedActiveCarrier && row.getAttribute("data-carrier") === selectedActiveCarrier));
   renderActiveDetail(selectedActiveCarrier ? activeByCarrier[selectedActiveCarrier] : activeCombined);
+});
+$("#boardCarrier")?.addEventListener("change", boardLoad);   // filter the sales board by carrier
+$("#enrollList")?.addEventListener("click", e => {           // enroller -> who/carrier/amount (click again to close)
+  const row = e.target.closest(".enroll-row"); if (!row) return;
+  const fid = row.getAttribute("data-fid");
+  selectedEnroller = (selectedEnroller === fid) ? null : fid;
+  document.querySelectorAll("#enrollList .enroll-row").forEach(r =>
+    r.classList.toggle("sel", !!selectedEnroller && r.getAttribute("data-fid") === selectedEnroller));
+  renderEnrollmentDetail(selectedEnroller ? enrollById[selectedEnroller] : null);
 });
 $("#boardToggle").addEventListener("click", toggleBoard);
 $("#boardApply").addEventListener("click", () => { boardAuto = false; boardLoad(); });

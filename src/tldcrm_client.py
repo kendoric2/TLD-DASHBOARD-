@@ -167,15 +167,20 @@ class TLDCRMClient:
             })
         return agents
 
-    def sales_board(self, start, end):
-        """Combined leaderboard (agents + fronters) for a date range — its own independent
-        pull, deduped + stage=sale. Disk-cached for final ranges like the dashboard."""
-        cached = cache.load("sales_board", start, end)
+    def sales_board(self, start, end, carrier=None):
+        """Combined leaderboard (agents + fronters) for a date range, optionally filtered to a
+        single carrier. Returns {"board": [...], "carriers": [every carrier in the range]} so
+        the header dropdown can offer the full list. Disk-cached per (range, carrier)."""
+        ns = "sales_board" if not carrier else "sales_board__" + re.sub(r"[^A-Za-z0-9]+", "_", carrier)
+        cached = cache.load(ns, start, end)
         if cached is not None:
             return cached
         rows = _dedupe_rows(self.run("policies_ids", start, end))
-        data = {"board": _sales_board(rows)}
-        cache.save("sales_board", start, end, data)
+        carriers = sorted({(str(r.get("carrier_name") or "").strip() or "—") for r in rows})
+        if carrier:
+            rows = [r for r in rows if (str(r.get("carrier_name") or "").strip() or "—") == carrier]
+        data = {"board": _sales_board(rows), "carriers": carriers}
+        cache.save(ns, start, end, data)
         return data
 
     def vendor_performance(self, start, end):
@@ -649,10 +654,17 @@ def enrollment_tracker(kept_rows):
         if fid in ("", "0"):
             no_enroller += 1
             continue
-        g = by.setdefault(fid, {"fronter_id": fid, "name": None, "count": 0})
+        g = by.setdefault(fid, {"fronter_id": fid, "name": None, "count": 0, "_detail": {}})
         g["count"] += 1
         g["name"] = r.get("fronter_name") or g["name"]
-    rows = sorted(by.values(), key=lambda g: (-g["count"], str(g["name"] or "")))
+        agent = str(r.get("agent_name") or "—").strip() or "—"
+        carrier = str(r.get("carrier_name") or "—").strip() or "—"
+        g["_detail"][(agent, carrier)] = g["_detail"].get((agent, carrier), 0) + 1
+    rows = []
+    for g in sorted(by.values(), key=lambda g: (-g["count"], str(g["name"] or ""))):
+        detail = [{"agent": a, "carrier": c, "count": n} for (a, c), n in g["_detail"].items()]
+        detail.sort(key=lambda x: -x["count"])
+        rows.append({"fronter_id": g["fronter_id"], "name": g["name"], "count": g["count"], "detail": detail})
     return {"total": sum(g["count"] for g in rows), "by_enroller": rows, "no_enroller": no_enroller}
 
 

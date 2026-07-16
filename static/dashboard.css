@@ -131,6 +131,10 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .board-section.collapsed .board-caret{transform:rotate(-90deg)}
 .board-range{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .board-range .to{color:#fff;opacity:.85;font-size:13px}
+.board-carrier{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;
+  border-radius:9px;padding:7px 10px;font-size:13px;cursor:pointer}
+.board-carrier:focus{outline:2px solid #fff}
+.board-carrier option{color:#000}
 .board-body{margin-top:12px}
 .board-section.collapsed .board-body,.board-section.collapsed .board-range{display:none}
 .bd-car{color:var(--muted);font-size:12.5px}
@@ -168,6 +172,12 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .enroll-row:last-child{border-bottom:none}
 .enroll-name{color:var(--text)}
 .enroll-count{font-weight:700;color:var(--brand-dark);font-variant-numeric:tabular-nums}
+.enroll-row{cursor:pointer}
+.enroll-row.sel{background:#F2F5F8}
+.ed-list{margin-top:6px;max-height:160px;overflow-y:auto}
+.ed-row{display:flex;justify-content:space-between;gap:10px;padding:4px 2px;border-bottom:1px solid var(--line);font-size:13px}
+.ed-row:last-child{border-bottom:none}
+.ed-row b{color:var(--brand-dark);font-variant-numeric:tabular-nums}
 
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line)}
