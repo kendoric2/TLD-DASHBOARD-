@@ -6,6 +6,10 @@
 const $ = s => document.querySelector(s);
 const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
+// Money with thousands separators + 2 decimals — e.g. 1787 -> "$1,787.00".
+// (toFixed() alone gives "$1787.00", which is why CPA used to lose its commas.)
+const money2 = v => "$" + Number(v || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
 let charts = {};          // keep chart instances so we can destroy before redraw
 let selectedCarrier = null;  // carrier slice currently shown in the detail panel
 let selectedState = null;    // state currently shown in the map's detail panel
@@ -290,7 +294,7 @@ function renderKPIs(k) {
        note:"Falcon sales ÷ billable calls"},
     {label:"Total Spend",       value: wait(k.total_spend, money0),
        note:"Lead cost this period"},
-    {label:"Blended CPA",       value: wait(k.blended_cpa, v => "$" + Number(v).toFixed(2)),
+    {label:"Blended CPA",       value: wait(k.blended_cpa, money2),
        note:"Total spend ÷ sales"},
     {label:"Avg Premium · GTL", value: money0(k.avg_gtl_premium),
        note:"GTL is the only carrier with premium"},
@@ -635,7 +639,7 @@ function renderAgents(rows) {
       <td><span class="rank ${i===0?'top':''}">${i+1}</span>${a.name}</td>
       <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((a.policies||0)/maxP*100).toFixed(0)}%"></div></div><span>${(a.policies||0).toLocaleString()}</span></div></td>
       <td class="num">${wait(a.cost, money0)}</td>
-      <td class="num">${wait(a.cpa, v => '$' + Number(v).toFixed(2))}</td>
+      <td class="num">${wait(a.cpa, money2)}</td>
     </tr>`).join("");
 
   // agent count next to the section title
@@ -649,7 +653,7 @@ function renderAgents(rows) {
       <td>Totals</td>
       <td class="num">${totPolicies.toLocaleString()}</td>
       <td class="num">${t ? money0(t.cost || 0) : '…'}</td>
-      <td class="num">${t ? '$' + Number(t.cpa || 0).toFixed(2) : '…'}</td>
+      <td class="num">${t ? money2(t.cpa) : '…'}</td>
     </tr>`;
 }
 
