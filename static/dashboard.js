@@ -17,6 +17,8 @@ let selectedEnroller = null;       // enroller row selected in the Enrollments t
 let enrollById = {};               // fronter_id -> enroller (incl detail)
 let boardOpen = true;     // sales board expanded (true) or collapsed to its tab (false)
 let boardAuto = true;     // board auto-anchors to this-week-to-date until the user picks a custom range
+let lastBoard = null;     // last sales-board payload, so re-sorting never refetches
+let boardSortKey = "total", boardSortDir = -1;   // board sort: -1 = high→low (numbers), 1 = A→Z (name)
 let lastData = null;      // cache for client-side sorting
 let sortKey = "policies", sortDir = -1;
 let autoTimer = null;     // handle for the auto-refresh interval
@@ -672,9 +674,11 @@ async function boardLoad(){
   } catch (err) { list.innerHTML = boardMsg("Could not load the sales board."); }
 }
 function renderBoard(data){
+  lastBoard = data;                                  // keep it so sorting can re-render without a refetch
   $("#boardLabel").textContent = data.range_label || "";
   populateBoardCarriers(data.carriers || []);
-  const rows = data.board || [];
+  updateBoardSortArrows();
+  const rows = sortBoardRows(data.board || []);
   const fmt = n => (n || 0).toLocaleString();
   const money = v => '$' + Number(v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
   $("#boardList").innerHTML = rows.length ? rows.map((p, i) => {
@@ -691,6 +695,35 @@ function renderBoard(data){
     </tr>`;
   }).join("") : boardMsg("No deals in this range.");
 }
+/* Board sorting — client-side, so it never refetches. Numbers sort high→low on the first
+   click, names A→Z; clicking the same column again reverses. Uses its own state + the
+   data-bsort attribute so it can't collide with the Agent Performance table's sorting. */
+function sortBoardRows(rows){
+  const k = boardSortKey;
+  return [...(rows || [])].sort((a, b) => {
+    if (k === "name") return boardSortDir * String(a.name || "").localeCompare(String(b.name || ""));
+    const d = (a[k] || 0) - (b[k] || 0);
+    return boardSortDir * (d || 0) || String(a.name || "").localeCompare(String(b.name || ""));  // ties: by name
+  });
+}
+function updateBoardSortArrows(){
+  document.querySelectorAll("th[data-bsort]").forEach(th => {
+    if (!th.dataset.label) th.dataset.label = th.textContent.trim();   // remember the plain header text
+    const active = th.getAttribute("data-bsort") === boardSortKey;
+    th.classList.toggle("sorted", active);
+    th.textContent = th.dataset.label + (active ? (boardSortDir === 1 ? " ▲" : " ▼") : "");
+  });
+}
+document.querySelectorAll("th[data-bsort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.getAttribute("data-bsort");
+    if (boardSortKey === k) boardSortDir *= -1;                 // same column -> flip direction
+    else { boardSortKey = k; boardSortDir = (k === "name") ? 1 : -1; }   // name A→Z, numbers high→low
+    if (lastBoard) renderBoard(lastBoard);
+    else updateBoardSortArrows();
+  });
+});
+
 // Fill the board's carrier dropdown from the range's carriers, preserving the current pick.
 function populateBoardCarriers(carriers){
   const sel = $("#boardCarrier"); if (!sel) return;
