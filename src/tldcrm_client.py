@@ -226,9 +226,10 @@ class TLDCRMClient:
                 return hit[1]
 
         # Disk cache: a range that ended before today is FINAL — its numbers never
-        # change, so serve it from cache/ forever and never re-hit the API.
+        # change, so serve it from cache/ forever and never re-hit the API. An empty
+        # cached copy is treated as a miss so a bad old file can't keep serving zeros.
         disk = cache.load("agent_cpa", start, end)
-        if disk is not None:
+        if disk is not None and _cpa_has_data(disk):
             with _CPA_LOCK:
                 _CPA_CACHE[cache_key] = (now, disk)
             return disk
@@ -248,7 +249,14 @@ class TLDCRMClient:
 
         try:
             result = self._fetch_agent_cpa(start, end)
-            cache.save("agent_cpa", start, end, result)  # persist if the range is final
+            # NEVER persist an empty/zero CPA result. A past range is "final" and would be
+            # replayed from disk forever, so one hiccup (timeout, mid-refresh report) would
+            # freeze COST/CPA/Spend at 0 permanently. Only cache a result with real data.
+            if _cpa_has_data(result):
+                cache.save("agent_cpa", start, end, result)
+            else:
+                print(f"[agent_cpa] {start}->{end}: empty result — NOT cached (will retry)",
+                      file=sys.stderr)
             with _CPA_LOCK:
                 _CPA_CACHE[cache_key] = (time.time(), result)
             return result
@@ -430,6 +438,17 @@ class TLDCRMClient:
         else:
             cache.save("dashboard", start, end, data)   # persist clean results for final ranges
         return data
+
+
+def _cpa_has_data(result):
+    """True if a CPA result actually carries numbers. Used to keep empty results out of the
+    disk cache (a 'final' past range is replayed forever, so caching zeros is permanent)."""
+    if not isinstance(result, dict):
+        return False
+    if result.get("by_agent"):
+        return True
+    tot = result.get("totals") or {}
+    return any(_num(tot.get(k)) for k in ("cost", "sales", "billable_calls"))
 
 
 def _name_keys(s):
