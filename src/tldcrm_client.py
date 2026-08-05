@@ -25,18 +25,23 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
-import cache
 import metrics
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as _f:
     PAYLOADS = json.load(_f)["queries"]
 
-# --- CPA cache ---------------------------------------------------------------
+# --- CPA cache (IN MEMORY ONLY) ----------------------------------------------
 # report_cpa_agent is a heavy precomputed report and the slowest call in the
-# dashboard. CPA barely moves minute-to-minute, so we cache the result per
+# dashboard. CPA barely moves minute-to-minute, so we hold the result per
 # date-range for a few minutes. The 30s auto-refresh then reuses the cached map
 # (KPIs stay live) instead of re-running the heavy report on every tick.
+#
+# NOTHING IS WRITTEN TO DISK. Persistent caching was removed deliberately: a past
+# range was treated as "final" and replayed forever, so one bad response (or a new
+# field added later) could serve stale/blank numbers indefinitely. Everything now
+# expires within _CPA_CACHE_TTL, so the dashboard can't show anything older than
+# that — and force=True skips even this.
 _CPA_CACHE = {}                 # {(start, end): (fetched_at_epoch, {"by_agent":..., "totals":...})}
 _CPA_CACHE_TTL = 300            # seconds — 5 minutes
 _CPA_LOCK = threading.Lock()    # guards _CPA_CACHE / _CPA_INFLIGHT across worker threads
@@ -170,18 +175,12 @@ class TLDCRMClient:
     def sales_board(self, start, end, carrier=None):
         """Combined leaderboard (agents + fronters) for a date range, optionally filtered to a
         single carrier. Returns {"board": [...], "carriers": [every carrier in the range]} so
-        the header dropdown can offer the full list. Disk-cached per (range, carrier)."""
-        ns = "sales_board" if not carrier else "sales_board__" + re.sub(r"[^A-Za-z0-9]+", "_", carrier)
-        cached = cache.load(ns, start, end)
-        if cached is not None:
-            return cached
+        the header dropdown can offer the full list. Always a live pull."""
         rows = _dedupe_rows(self.run("policies_ids", start, end))
         carriers = sorted({(str(r.get("carrier_name") or "").strip() or "—") for r in rows})
         if carrier:
             rows = [r for r in rows if (str(r.get("carrier_name") or "").strip() or "—") == carrier]
-        data = {"board": _sales_board(rows), "carriers": carriers}
-        cache.save(ns, start, end, data)
-        return data
+        return {"board": _sales_board(rows), "carriers": carriers}
 
     def vendor_performance(self, start, end):
         """Per-vendor numbers from the Vendor CPA report (vendorperformance) for the date
@@ -209,30 +208,22 @@ class TLDCRMClient:
             })
         return out
 
-    def agent_cpa(self, start, end):
+    def agent_cpa(self, start, end, force=False):
         """Per-agent CPA + COST plus period totals from report_cpa_agent for the date
         range. Returns {"by_agent": {name_key: {"cpa":..., "cost":...}},
         "totals": {"cost":..., "sales":..., "cpa":...}}.
 
-        Cached per (start, end) for _CPA_CACHE_TTL seconds. Concurrent callers for the
-        same range share ONE fetch (so startup warming + the page's lazy load never
-        double-hit this heavy report) — the first caller fetches, the rest wait."""
+        Held in memory for _CPA_CACHE_TTL seconds so the 30s auto-refresh (and several
+        people viewing the same range) share one fetch. Nothing is persisted to disk, so a
+        result can never go stale beyond that window. force=True skips the memory copy."""
         cache_key = (start, end)
         now = time.time()
-        with _CPA_LOCK:
-            hit = _CPA_CACHE.get(cache_key)
-            if hit and now - hit[0] < _CPA_CACHE_TTL:    # fresh in-memory copy
-                metrics.log("agent_cpa", start=start, end=end, source="mem-cache")
-                return hit[1]
-
-        # Disk cache: a range that ended before today is FINAL — its numbers never
-        # change, so serve it from cache/ forever and never re-hit the API. An empty
-        # cached copy is treated as a miss so a bad old file can't keep serving zeros.
-        disk = cache.load("agent_cpa", start, end)
-        if disk is not None and _cpa_has_data(disk):
+        if not force:
             with _CPA_LOCK:
-                _CPA_CACHE[cache_key] = (now, disk)
-            return disk
+                hit = _CPA_CACHE.get(cache_key)
+                if hit and now - hit[0] < _CPA_CACHE_TTL:    # fresh in-memory copy
+                    metrics.log("agent_cpa", start=start, end=end, source="mem-cache")
+                    return hit[1]
 
         with _CPA_LOCK:
             ev = _CPA_INFLIGHT.get(cache_key)
@@ -249,16 +240,14 @@ class TLDCRMClient:
 
         try:
             result = self._fetch_agent_cpa(start, end)
-            # NEVER persist an empty/zero CPA result. A past range is "final" and would be
-            # replayed from disk forever, so one hiccup (timeout, mid-refresh report) would
-            # freeze COST/CPA/Spend at 0 permanently. Only cache a result with real data.
+            # Don't even hold an empty result in memory — retry on the next request rather
+            # than showing zeros for the next few minutes.
             if _cpa_has_data(result):
-                cache.save("agent_cpa", start, end, result)
+                with _CPA_LOCK:
+                    _CPA_CACHE[cache_key] = (time.time(), result)
             else:
-                print(f"[agent_cpa] {start}->{end}: empty result — NOT cached (will retry)",
+                print(f"[agent_cpa] {start}->{end}: empty result — not cached (will retry)",
                       file=sys.stderr)
-            with _CPA_LOCK:
-                _CPA_CACHE[cache_key] = (time.time(), result)
             return result
         finally:
             with _CPA_LOCK:
@@ -360,13 +349,7 @@ class TLDCRMClient:
 
     def build_dashboard(self, start, end, range_label):
         # start/end are resolved ISO dates (preset or custom) — see app._resolve_range.
-
-        # Disk cache: a fully-past range is final, so reuse the saved result and skip
-        # every API call. Ranges that include today fall through and load live.
-        cached = cache.load("dashboard", start, end)
-        if cached is not None:
-            cached["range_label"] = range_label
-            return cached
+        # Always a live pull: nothing is persisted, so what you see is what TLD has now.
 
         # All queries are independent and filtered server-side, so run them
         # concurrently — the dashboard loads in ~one round-trip instead of seven.
@@ -435,8 +418,6 @@ class TLDCRMClient:
         }
         if errors:
             data["error"] = "Some metrics didn't load: " + "; ".join(errors)
-        else:
-            cache.save("dashboard", start, end, data)   # persist clean results for final ranges
         return data
 
 

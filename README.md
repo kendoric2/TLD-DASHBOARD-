@@ -59,11 +59,19 @@ The app only ever issues **GET** requests to TLD's `/api/egress/*` (read) endpoi
 nothing is written back to the CRM or dialer. Your API key stays on the server and never
 reaches the browser.
 
+## Always current
+
+Every number is pulled live from TLDCRM when you load a date range — **nothing is stored on
+disk**, so the dashboard can never show you a stale or blank figure. The only caching is a
+short-lived in-memory copy of the heavy cost/CPA report (a few minutes), which lets the
+30-second auto-refresh and several people viewing the same range share one pull instead of
+hammering the API. Hitting **↻ Refresh** skips even that and pulls everything fresh.
+
 ## How it works under the hood
 
 The internals — every TLD-specific rule, the date handling, how each number is computed,
-the caching strategy, a file-by-file map, and the gotchas we learned the hard way — live in
-the **blueprint** (kept locally in `docs/`, not committed):
+a file-by-file map, and the gotchas we learned the hard way — live in the **blueprint**
+(kept locally in `docs/`, not committed):
 
 - **`docs/BLUEPRINT-ENGINEER.md`** — the full technical reference, with code.
 - **`docs/TLD-Dashboard-Overview.docx`** — the same material in plain English, no code.

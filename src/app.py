@@ -24,7 +24,6 @@ import webbrowser
 from flask import Flask, jsonify, render_template, request
 
 import config
-import cache
 from sample_data import get_sample_dashboard, get_sample_board
 
 # date_range_for only reads the JSON template (no credentials needed); used so
@@ -142,7 +141,8 @@ def api_agent_cpa():
         return jsonify({"by_agent": {}, "totals": {}})    # demo: sample data already carries CPA/COST
     try:
         start, end, _ = _resolve_range(request.args)
-        return jsonify(client.agent_cpa(start, end))
+        force = bool(request.args.get("force"))   # Refresh button -> skip the memory copy
+        return jsonify(client.agent_cpa(start, end, force=force))
     except ValueError as e:
         return jsonify({"by_agent": {}, "totals": {}, "error": str(e)}), 400
     except Exception as ex:
@@ -208,5 +208,4 @@ if __name__ == "__main__":
     # Warm the heavy CPA report for the default range in the background so the first view is fast.
     if config.have_creds():
         threading.Thread(target=_warm_cpa_cache, daemon=True).start()
-    cache.snapshot()   # refresh logs/cache_snapshot.csv to reflect the current cache
     app.run(host="127.0.0.1", port=port, debug=False)

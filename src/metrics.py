@@ -6,7 +6,7 @@ row to logs/egress.csv so you can see exactly what the dashboard is doing and ho
 many API calls it's making. Open the CSV in Excel anytime.
 
 Columns: datetime, endpoint, query, range, source, status, ms, count
-  source = live | mem-cache | disk-cache
+  source = live | mem-cache   (mem-cache = served from the short-lived in-memory copy)
   status = HTTP status for live calls (or ERR); blank for cache hits
   ms     = duration of a live call in milliseconds; blank for cache hits
   count  = cumulative number of LIVE calls so far; blank for cache hits
@@ -80,7 +80,7 @@ def log(endpoint, *, query=None, start=None, end=None, source="live", status=Non
 
 def summary():
     """Aggregate the whole log: counts per source + per endpoint for live calls."""
-    totals = {"live": 0, "mem-cache": 0, "disk-cache": 0}
+    totals = {"live": 0, "mem-cache": 0}
     by_endpoint = {}
     try:
         with open(LOG_PATH, newline="", encoding="utf-8") as f:

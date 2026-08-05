@@ -161,7 +161,9 @@ function validCustom(sel){
   return true;
 }
 
-async function load() {
+// force=true (the Refresh button / Apply) skips the server's short-lived memory copy of the
+// heavy CPA report and pulls everything straight from TLD. Auto-refresh calls load() plain.
+async function load(force) {
   const sel = currentSel();
   if (sel.key === "custom" && !validCustom(sel)){ $("#footer").textContent = "Pick a valid date range, then Apply."; return; }
   // On a same-range refresh, keep the last-known COST/CPA so the columns don't blink
@@ -184,7 +186,7 @@ async function load() {
     }
     lastData = data;
     render(data);
-    if (!data.demo) loadCPA(sel);   // phase 2: fill/refresh COST/CPA + cost tiles without blocking paint
+    if (!data.demo) loadCPA(sel, force);   // phase 2: fill/refresh COST/CPA + cost tiles without blocking paint
     if (boardOpen) boardLoad();     // refresh the sales board on the same cycle (uses its own range)
   } catch (e) {
     $("#errbar").hidden = false;
@@ -204,15 +206,15 @@ function armAuto(sel) {
   if (!$("#autoRefresh").checked) return;
   // a finished (past) custom range can't change — don't poll it
   if (sel.key === "custom" && sel.end && sel.end < todayISO()) return;
-  autoTimer = setInterval(load, AUTO_MS);
+  autoTimer = setInterval(() => load(), AUTO_MS);   // auto-refresh never forces
 }
 
 /* Phase 2: the heavy CPA report (COST, CPA, Total Spend, Blended CPA) loads on its
    own so it never blocks first paint. Those fields show "…" until this returns —
    which is instant once the server-side cache is warm. */
-async function loadCPA(sel) {
+async function loadCPA(sel, force) {
   try {
-    const res = await fetch(`/api/agent_cpa?${qsFor(sel)}`);
+    const res = await fetch(`/api/agent_cpa?${qsFor(sel)}${force ? "&force=1" : ""}`);
     const cpa = await res.json();
     if (!lastData || sel.token !== currentSel().token) return;   // ignore stale result after a change
     applyCPA(cpa);
@@ -741,9 +743,9 @@ function toggleBoard(){
 }
 
 /* ---- GUI events ---- */
-$("#applyRange").addEventListener("click", load);
-["startDate","endDate"].forEach(id => $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") load(); }));
-$("#refresh").addEventListener("click", load);
+$("#applyRange").addEventListener("click", () => load(true));
+["startDate","endDate"].forEach(id => $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") load(true); }));
+$("#refresh").addEventListener("click", () => { load(true); boardLoad(); });   // force a fully fresh pull
 $("#autoRefresh").addEventListener("change", () => armAuto());
 $("#stateList")?.addEventListener("click", e => {   // list fallback is clickable too
   const el = e.target.closest(".st"); if (!el) return;
