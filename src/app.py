@@ -21,7 +21,7 @@ import os
 import datetime
 import threading
 import webbrowser
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 
 import config
 from sample_data import get_sample_dashboard, get_sample_board
@@ -170,6 +170,40 @@ def api_agent_detail():
     except Exception as e:
         return jsonify({"people": [], "rows": [], "error": str(e),
                         "summary": {"closed": 0, "enrolled": 0, "total": 0}})
+
+
+@app.route("/api/agent_detail/export")
+def api_agent_detail_export():
+    """Download one person's deals as a formatted .xlsx for an audit."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    agent = (request.args.get("agent") or "").strip()
+    if not agent:
+        return jsonify({"error": "Choose a person before exporting."}), 400
+
+    client = _client()
+    if client is None:
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to export real data."}), 400
+
+    try:
+        import export_xlsx
+        data = client.agent_detail(start, end, agent)
+        rows = export_xlsx.sort_rows(data.get("rows") or [],
+                                     request.args.get("sort") or "date_sold",
+                                     (request.args.get("dir") or "-1") == "-1")
+        buf, fname = export_xlsx.build(agent, start, end, label,
+                                       data.get("summary") or {}, rows)
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        return jsonify({"error": "Excel export needs openpyxl. Run: "
+                                 "pip install -r requirements.txt"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
 
 
 @app.route("/api/sales_board")

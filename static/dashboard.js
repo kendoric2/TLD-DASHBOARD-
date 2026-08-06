@@ -869,6 +869,15 @@ function openAgentDetail(name){
 $("#tabDashboard").addEventListener("click", () => showTab("dashboard"));
 $("#tabDetail").addEventListener("click", () => showTab("detail"));
 $("#detailApply").addEventListener("click", () => loadDetail());
+$("#detailExport").addEventListener("click", () => {
+  const who = $("#detailAgent").value;
+  const s = pickerISO("detailStart"), e = pickerISO("detailEnd");
+  if (!who){ $("#detailSummary").textContent = "Choose a person before exporting."; return; }
+  if (!s || !e){ $("#detailSummary").textContent = "Pick a start and end date."; return; }
+  // hand the server the sort we're currently showing so the file matches the screen
+  window.location = `/api/agent_detail/export?range=custom&start=${s}&end=${e}`
+    + `&agent=${encodeURIComponent(who)}&sort=${detailSortKey}&dir=${detailSortDir}`;
+});
 $("#detailAgent").addEventListener("change", () => loadDetail());
 ["detailStart","detailEnd"].forEach(id => { const el = $("#"+id);
   if (el) el.addEventListener("keydown", ev => { if (ev.key === "Enter") loadDetail(); }); });
