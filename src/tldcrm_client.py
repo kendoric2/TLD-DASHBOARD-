@@ -47,6 +47,11 @@ _CPA_CACHE_TTL = 300            # seconds — 5 minutes
 _CPA_LOCK = threading.Lock()    # guards _CPA_CACHE / _CPA_INFLIGHT across worker threads
 _CPA_INFLIGHT = {}              # {(start, end): Event} — dedupes concurrent fetches of the same range
 
+# Agent-detail rows per range, same short TTL: clicking between people re-uses one pull
+# instead of re-fetching the whole range each time. In memory only, like everything else.
+_DETAIL_CACHE = {}              # {(start, end): (fetched_at, rows, people)}
+_DETAIL_LOCK = threading.Lock()
+
 
 def date_range_for(range_key):
     """Return (start, end) as ISO dates (YYYY-MM-DD) for the selected period."""
@@ -264,8 +269,18 @@ class TLDCRMClient:
             "limit": 1000,                           # cover the full roster (matches agent_policies)
             "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1,
         }
-        # Use the same proven request+unwrap path the working probe uses.
-        resp = config.egress_get("report_cpa_agent", body, timeout=max(self.timeout, 90))
+        # This report is the slowest thing we touch (~30s for a month) and we need it TWICE:
+        # once org-wide, once scoped to Falcon for the conversion rate. They're independent,
+        # so run them side by side — sequentially this was ~60s, together it's ~30s.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fut_main = pool.submit(config.egress_get, "report_cpa_agent", body,
+                                   max(self.timeout, 90))
+            fut_conv = pool.submit(self._falcon_conversion, start, end)
+            resp = fut_main.result()                     # a failure here propagates, as before
+            try:
+                conversion = fut_conv.result()
+            except Exception:
+                conversion = 0.0                         # never let conversion sink the tiles
 
         # report_cpa_agent returns {data|results|rows: [...], totals: {...}} (sometimes
         # wrapped in "response", which egress_get already peels). Pull out rows + totals.
@@ -306,11 +321,8 @@ class TLDCRMClient:
                    "billable_calls": tcalls}
 
         # Conversion = FALCON Sales / billable calls (the CRM 'Sales / All Calls %').
-        # Isolated so a hiccup here never wipes the COST/CPA tiles.
-        try:
-            tot["conversion"] = self._falcon_conversion(start, end)
-        except Exception:
-            tot["conversion"] = 0.0
+        # Already fetched in parallel with the org-wide report above; 0.0 if it failed.
+        tot["conversion"] = conversion
 
         # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the browser sees.
         print(f"[agent_cpa] {start}->{end}: {len(rows)} report rows; "
@@ -346,6 +358,83 @@ class TLDCRMClient:
 
         sales, calls = _t("sales"), _t("calls_billable")
         return round(sales / calls * 100, 1) if calls else 0.0
+
+    def _sep_map(self, start, end, pad_days=3):
+        """{lead_id: sep} for every lead that CONVERTED in the range (padded a few days).
+
+        SEP lives on the lead, not the policy, and the leads endpoint ignores a lead_id
+        filter — but it does honor date_converted. Pulling the converted window gives us
+        ~900 rows in half a second and covers 100% of the range's sold policies, versus
+        188k rows / 8s / 93% coverage for a date_created window. (probe_lead_join2.py)"""
+        a = datetime.date.fromisoformat(start) - datetime.timedelta(days=pad_days)
+        b = datetime.date.fromisoformat(end) + datetime.timedelta(days=pad_days)
+        resp = config.egress_get("leads", {
+            "columns": ["lead_id", "sep"],
+            "date_converted": f"{a} 00:00:00", "date_converted_end": f"{b} 23:59:59",
+            "limit": 200000}, timeout=max(self.timeout, 120))
+        rows = resp if isinstance(resp, list) else []
+        out = {}
+        for r in rows:
+            if isinstance(r, dict) and r.get("lead_id"):
+                out[str(r["lead_id"])] = str(r.get("sep") or "").strip()
+        return out
+
+    def agent_detail(self, start, end, agent=None):
+        """Per-policy breakdown for one person — every deal they closed AND every deal they
+        enrolled, with the SEP joined on. Returns {"people": [...all names...], "rows": [...],
+        "summary": {...}}. Held in memory briefly so clicking between people is instant."""
+        key = (start, end)
+        now = time.time()
+        with _DETAIL_LOCK:
+            hit = _DETAIL_CACHE.get(key)
+        if hit and now - hit[0] < _CPA_CACHE_TTL:
+            rows, people = hit[1], hit[2]
+        else:
+            # policies and the SEP lookup are independent — fetch them side by side
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                fut_pol = pool.submit(self.run, "policy_detail", start, end)
+                fut_sep = pool.submit(self._sep_map, start, end)
+                policies = _dedupe_rows(fut_pol.result())     # deduped + stage=sale
+                try:
+                    sep = fut_sep.result()
+                except Exception:
+                    sep = {}                                  # SEP is a nice-to-have, not fatal
+
+            rows, names = [], set()
+            for r in policies:
+                a = str(r.get("agent_name") or "").strip()
+                f = str(r.get("fronter_name") or "").strip()
+                if a:
+                    names.add(a)
+                if f:
+                    names.add(f)
+                rows.append({
+                    "date_sold": str(r.get("date_sold") or "")[:10],
+                    "lead_id": r.get("lead_id"),
+                    "agent": a,
+                    "enroller": f,                            # "" => the agent enrolled it themselves
+                    "carrier": str(r.get("carrier_name") or "").strip(),
+                    "plan": str(r.get("product_plan_name") or r.get("product_name") or "").strip(),
+                    "sep": sep.get(str(r.get("lead_id")), ""),
+                    "status": str(r.get("status_name") or "").strip(),
+                })
+            rows.sort(key=lambda x: x["date_sold"], reverse=True)
+            people = sorted(names)
+            with _DETAIL_LOCK:
+                _DETAIL_CACHE[key] = (time.time(), rows, people)
+
+        if not agent:
+            return {"people": people, "rows": [], "summary": {"closed": 0, "enrolled": 0, "total": 0}}
+
+        mine = []
+        for r in rows:
+            if r["agent"] == agent:
+                mine.append(dict(r, role="closed"))
+            elif r["enroller"] == agent:
+                mine.append(dict(r, role="enrolled"))
+        closed = sum(1 for r in mine if r["role"] == "closed")
+        return {"people": people, "rows": mine, "agent": agent,
+                "summary": {"closed": closed, "enrolled": len(mine) - closed, "total": len(mine)}}
 
     def build_dashboard(self, start, end, range_label):
         # start/end are resolved ISO dates (preset or custom) — see app._resolve_range.

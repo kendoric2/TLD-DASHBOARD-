@@ -60,8 +60,10 @@ function initDatePickers(){
   fpStart = mk("startDate"); fpEnd = mk("endDate");          // clicking a field opens the calendar grid
   fpById["startDate"] = fpStart; fpById["endDate"] = fpEnd;
   fpById["boardStart"] = mk("boardStart"); fpById["boardEnd"] = mk("boardEnd");
+  fpById["detailStart"] = mk("detailStart"); fpById["detailEnd"] = mk("detailEnd");
   [["startMenuBtn","startDate"], ["endMenuBtn","endDate"],
-   ["boardStartMenuBtn","boardStart"], ["boardEndMenuBtn","boardEnd"]].forEach(([btn, fld]) => {
+   ["boardStartMenuBtn","boardStart"], ["boardEndMenuBtn","boardEnd"],
+   ["detailStartMenuBtn","detailStart"], ["detailEndMenuBtn","detailEnd"]].forEach(([btn, fld]) => {
     const el = $("#"+btn);
     if (el) el.addEventListener("click", (e) => { e.stopPropagation(); openRelMenu(fld, e.currentTarget); });
   });
@@ -178,8 +180,14 @@ async function load(force) {
     if (a.cost !== undefined) prevCPA[a.name] = {cost: a.cost, cpa: a.cpa};
   });
   $("#footer").textContent = "Loading…";
+  // Fire all three requests AT ONCE — none of them depends on the others. The CPA report is
+  // the slow one (~30s on a big month), so starting it now instead of after the dashboard
+  // comes back takes that time off the total wait.
+  const dashReq = fetch(`/api/dashboard?${qsFor(sel)}`);
+  const cpaReq = fetchCPA(sel, force);
+  if (boardOpen) boardLoad();
   try {
-    const res = await fetch(`/api/dashboard?${qsFor(sel)}`);
+    const res = await dashReq;
     const data = await res.json();
     if (data.error && !data.kpis){ showErr(data.error); $("#footer").textContent = "—"; return; }
     data._range = sel.token;
@@ -190,8 +198,11 @@ async function load(force) {
     }
     lastData = data;
     render(data);
-    if (!data.demo) loadCPA(sel, force);   // phase 2: fill/refresh COST/CPA + cost tiles without blocking paint
-    if (boardOpen) boardLoad();     // refresh the sales board on the same cycle (uses its own range)
+    // The CPA request is already in flight; apply it whenever it lands (it may already
+    // have). Ignored if the user moved to another range in the meantime.
+    if (!data.demo) cpaReq.then(cpa => {
+      if (cpa && lastData && sel.token === currentSel().token) applyCPA(cpa);
+    });
   } catch (e) {
     $("#errbar").hidden = false;
     $("#errbar").textContent = "Could not reach the backend: " + e;
@@ -216,13 +227,12 @@ function armAuto(sel) {
 /* Phase 2: the heavy CPA report (COST, CPA, Total Spend, Blended CPA) loads on its
    own so it never blocks first paint. Those fields show "…" until this returns —
    which is instant once the server-side cache is warm. */
-async function loadCPA(sel, force) {
-  try {
-    const res = await fetch(`/api/agent_cpa?${qsFor(sel)}${force ? "&force=1" : ""}`);
-    const cpa = await res.json();
-    if (!lastData || sel.token !== currentSel().token) return;   // ignore stale result after a change
-    applyCPA(cpa);
-  } catch (e) { /* leave the "…" placeholders — not fatal */ }
+// Kick off the heavy CPA report and hand back a promise of its JSON. Started alongside the
+// dashboard request (they're independent) and applied once the page data is in place.
+function fetchCPA(sel, force) {
+  return fetch(`/api/agent_cpa?${qsFor(sel)}${force ? "&force=1" : ""}`)
+    .then(r => r.json())
+    .catch(() => null);          // leave the "…" placeholders — not fatal
 }
 
 function applyCPA(cpa) {
@@ -690,7 +700,7 @@ function renderBoard(data){
   $("#boardList").innerHTML = rows.length ? rows.map((p, i) => {
     const top = (p.carriers || []).slice(0, 4).map(c => `${c.label} ${c.count}`).join(" · ");
     const more = (p.carriers || []).length > 4 ? " …" : "";
-    return `<tr>
+    return `<tr data-person="${p.name}" title="Click for this person's deals">
       <td><span class="rank ${i === 0 ? 'top' : ''}">${i + 1}</span></td>
       <td>${p.name}</td>
       <td class="num">${fmt(p.closed)}</td>
@@ -746,7 +756,88 @@ function toggleBoard(){
   if (boardOpen) boardLoad();
 }
 
+/* ===== Agent Detail tab — every deal a person closed or enrolled, with the SEP ===== */
+function showTab(which){
+  const detail = which === "detail";
+  $("#viewDetail").hidden = !detail;
+  $("#viewDashboard").hidden = detail;
+  $("#tabDetail").classList.toggle("active", detail);
+  $("#tabDashboard").classList.toggle("active", !detail);
+  if (detail && !$("#detailStart").value){          // first visit: default to the board's range
+    setPicker(fpById["detailStart"], "detailStart", parseDateInput($("#boardStart").value) || new Date());
+    setPicker(fpById["detailEnd"], "detailEnd", parseDateInput($("#boardEnd").value) || new Date());
+    loadDetail();
+  }
+}
+
+async function loadDetail(agent){
+  const s = pickerISO("detailStart"), e = pickerISO("detailEnd");
+  const body = $("#detailRows"), sum = $("#detailSummary");
+  if (!s || !e){ sum.textContent = "Pick a start and end date."; return; }
+  if (e < s){ sum.textContent = "End date can’t be before the start date."; return; }
+  const who = agent !== undefined ? agent : $("#detailAgent").value;
+  sum.textContent = "Loading…";
+  body.innerHTML = "";
+  try {
+    const qs = `range=custom&start=${s}&end=${e}` + (who ? `&agent=${encodeURIComponent(who)}` : "");
+    const d = await fetch(`/api/agent_detail?${qs}`).then(r => r.json());
+    if (d.error){ sum.textContent = d.error; return; }
+    fillDetailPeople(d.people || [], who);
+    if (!who){
+      sum.innerHTML = `Pick a person above to see their deals · <b>${(d.people || []).length}</b> people in this range`;
+      return;
+    }
+    const t = d.summary || {};
+    sum.innerHTML = `<b>${who}</b> · closed <b>${t.closed || 0}</b> · enrolled <b>${t.enrolled || 0}</b> · total <b>${t.total || 0}</b>`;
+    const rows = d.rows || [];
+    body.innerHTML = rows.length ? rows.map(r => `
+      <tr>
+        <td>${r.date_sold || ""}</td>
+        <td>${r.lead_id ?? ""}</td>
+        <td><span class="pill-role ${r.role}">${r.role}</span></td>
+        <td>${r.agent || '<span class="dash">—</span>'}</td>
+        <td>${r.enroller || '<span class="dash">—</span>'}</td>
+        <td>${r.carrier || ""}</td>
+        <td>${r.plan || '<span class="dash">—</span>'}</td>
+        <td class="sep-tag">${r.sep || '<span class="dash">—</span>'}</td>
+      </tr>`).join("")
+      : '<tr><td colspan="8" class="dash" style="padding:14px">No deals for this person in this range.</td></tr>';
+  } catch (err) {
+    sum.textContent = "Could not load the agent detail.";
+  }
+}
+
+function fillDetailPeople(people, selected){
+  const sel = $("#detailAgent");
+  const cur = selected !== undefined ? selected : sel.value;
+  const existing = Array.from(sel.options).slice(1).map(o => o.value);
+  if (existing.length !== people.length || !existing.every((v, i) => v === people[i])){
+    sel.innerHTML = ['<option value="">Choose a person…</option>']
+      .concat(people.map(p => `<option value="${p}">${p}</option>`)).join("");
+  }
+  sel.value = people.includes(cur) ? cur : "";
+}
+
+// Jump from the sales board straight into a person's breakdown, same dates.
+function openAgentDetail(name){
+  setPicker(fpById["detailStart"], "detailStart", parseDateInput($("#boardStart").value) || new Date());
+  setPicker(fpById["detailEnd"], "detailEnd", parseDateInput($("#boardEnd").value) || new Date());
+  showTab("detail");
+  window.scrollTo({top: 0, behavior: "smooth"});
+  loadDetail(name);
+}
+
 /* ---- GUI events ---- */
+$("#tabDashboard").addEventListener("click", () => showTab("dashboard"));
+$("#tabDetail").addEventListener("click", () => showTab("detail"));
+$("#detailApply").addEventListener("click", () => loadDetail());
+$("#detailAgent").addEventListener("change", () => loadDetail());
+["detailStart","detailEnd"].forEach(id => { const el = $("#"+id);
+  if (el) el.addEventListener("keydown", ev => { if (ev.key === "Enter") loadDetail(); }); });
+$("#boardList").addEventListener("click", e => {          // click a name on the board -> detail
+  const tr = e.target.closest("tr[data-person]"); if (!tr) return;
+  openAgentDetail(tr.getAttribute("data-person"));
+});
 $("#applyRange").addEventListener("click", () => load(true));
 ["startDate","endDate"].forEach(id => $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") load(true); }));
 $("#refresh").addEventListener("click", () => { load(true); boardLoad(); });   // force a fully fresh pull

@@ -47,8 +47,51 @@
   </div>
 </header>
 
+<nav class="tabs">
+  <button type="button" class="tab active" id="tabDashboard">Dashboard</button>
+  <button type="button" class="tab" id="tabDetail">Agent Detail</button>
+</nav>
+
 <main>
   <div id="errbar" class="errbar" hidden></div>
+
+  <section id="viewDetail" hidden>
+    <div class="section-title">Agent Detail
+      <span class="hint">— every deal a person closed or enrolled, with the SEP used</span>
+    </div>
+    <div class="card">
+      <div class="detail-controls">
+        <select class="detail-agent" id="detailAgent" aria-label="Choose a person">
+          <option value="">Choose a person…</option>
+        </select>
+        <span class="dpick">
+          <button type="button" class="cal-btn" id="detailStartMenuBtn" aria-label="Start date quick picks" title="Quick picks">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+          </button>
+          <input type="text" id="detailStart" class="datein" placeholder="Start date" autocomplete="off" aria-label="Detail start date" />
+        </span>
+        <span class="to">to</span>
+        <span class="dpick">
+          <button type="button" class="cal-btn" id="detailEndMenuBtn" aria-label="End date quick picks" title="Quick picks">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+          </button>
+          <input type="text" id="detailEnd" class="datein" placeholder="End date" autocomplete="off" aria-label="Detail end date" />
+        </span>
+        <button class="btn dark" id="detailApply">Apply</button>
+      </div>
+      <div class="detail-summary" id="detailSummary"></div>
+      <div class="table-scroll" style="max-height:560px">
+        <table>
+          <thead>
+            <tr><th>Date Sold</th><th>Lead ID</th><th>Role</th><th>Agent</th><th>Enroller</th><th>Carrier</th><th>Plan</th><th>SEP</th></tr>
+          </thead>
+          <tbody id="detailRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <div id="viewDashboard">
 
   <div class="section-title">Key numbers · <span class="rangeLabel">Today</span></div>
   <div class="kpis" id="kpis"></div>
@@ -150,6 +193,7 @@
       </table>
     </div>
   </div>
+  </div><!-- /#viewDashboard -->
 </main>
 
 <footer id="footer">Loading…</footer>

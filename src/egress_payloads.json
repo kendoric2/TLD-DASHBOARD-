@@ -37,6 +37,12 @@
       "payload": { "aggregates": true, "group_by": "carrier_name", "columns": ["carrier_name", "tql_cnt_policy_id"], "order_by": "tql_cnt_policy_id", "sort": "DESC" }
     },
 
+    "policy_detail": {
+      "endpoint": "policies",
+      "date_bounded": true,
+      "payload": { "columns": ["policy_id", "lead_id", "date_sold", "agent_name", "fronter_name", "carrier_name", "product_plan_name", "product_name", "status_name", "stage"], "limit": 200000 }
+    },
+
     "recent_sales": {
       "endpoint": "policies",
       "date_bounded": false,

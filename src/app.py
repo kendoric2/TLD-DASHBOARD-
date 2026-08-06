@@ -149,6 +149,29 @@ def api_agent_cpa():
         return jsonify({"by_agent": {}, "totals": {}, "error": str(ex)})
 
 
+@app.route("/api/agent_detail")
+def api_agent_detail():
+    """Per-policy breakdown for one person (deals closed + deals enrolled), with SEP."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    client = _client()
+    if client is None:
+        return jsonify({"demo": True, "people": [], "rows": [],
+                        "summary": {"closed": 0, "enrolled": 0, "total": 0},
+                        "range_label": label})
+    try:
+        data = client.agent_detail(start, end, request.args.get("agent") or None)
+        data["range_label"] = label
+        data["demo"] = False
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"people": [], "rows": [], "error": str(e),
+                        "summary": {"closed": 0, "enrolled": 0, "total": 0}})
+
+
 @app.route("/api/sales_board")
 def api_sales_board():
     """Combined sales leaderboard (agents + fronters) for the board's OWN date range."""
