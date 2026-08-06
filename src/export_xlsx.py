@@ -1,38 +1,29 @@
 """
-Excel export for the Agent Detail view.
+Plain Excel export for the Agent Detail view.
 
-Builds an audit-ready .xlsx in memory: a header block naming the person, the exact date
-range, when it was generated and the closed/enrolled/total summary, then the same eight
-columns shown on screen. Nothing is written to disk — the file streams straight to the
-browser.
+Just the data: a header row and the rows underneath, same eight columns as the screen and
+in the same order you've sorted them. No styling, no summary block. Built in memory and
+streamed straight to the browser.
 """
 import io
-import datetime
 
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
-NAVY = "182A54"
-GREEN = "00A248"
-LINE = "D6DEE8"
-
-# Exactly the columns shown in the Agent Detail table: (header, row key, width)
+# Exactly the columns shown in the Agent Detail table: (header, row key)
 COLUMNS = [
-    ("Date Sold", "date_sold", 13),
-    ("Lead ID",   "lead_id",   14),
-    ("Role",      "role",      11),
-    ("Agent",     "agent",     26),
-    ("Enroller",  "enroller",  26),
-    ("Carrier",   "carrier",   16),
-    ("Plan",      "plan",      18),
-    ("SEP",       "sep",        9),
+    ("Date Sold", "date_sold"),
+    ("Lead ID",   "lead_id"),
+    ("Role",      "role"),
+    ("Agent",     "agent"),
+    ("Enroller",  "enroller"),
+    ("Carrier",   "carrier"),
+    ("Plan",      "plan"),
+    ("SEP",       "sep"),
 ]
 
 
 def sort_rows(rows, key="date_sold", desc=True):
-    """Same ordering rule the on-screen table uses: blanks always sink to the bottom,
-    whichever direction the rest is sorted."""
+    """Same ordering as the on-screen table: blanks sink to the bottom either direction."""
     keys = {c[1] for c in COLUMNS}
     if key not in keys:
         key = "date_sold"
@@ -46,89 +37,45 @@ def sort_rows(rows, key="date_sold", desc=True):
 
 
 def safe_name(s):
-    """'Powers, Tony' -> 'Powers-Tony' so filenames stay clean and unambiguous."""
+    """'Powers, Tony' -> 'Powers-Tony' so filenames stay clean."""
     out = "".join(ch if ch.isalnum() else "-" for ch in str(s or "").strip())
     while "--" in out:
         out = out.replace("--", "-")
     return out.strip("-") or "agent"
 
 
+def _sheet_title(agent):
+    """Excel tab names: max 31 chars, and []:*?/\\ aren't allowed."""
+    t = "".join(" " if ch in "[]:*?/\\" else ch for ch in str(agent or "")).strip()
+    return (t[:31] or "Agent Detail")
+
+
 def build(agent, start, end, range_label, summary, rows):
-    """Return (BytesIO, filename) for the given person's deals."""
+    """Return (BytesIO, filename): who it's for, then the header row and their deals."""
     wb = Workbook()
     ws = wb.active
-    ws.title = "Agent Detail"
+    ws.title = _sheet_title(agent)
 
-    title_f = Font(name="Calibri", size=15, bold=True, color=NAVY)
-    lbl_f = Font(name="Calibri", size=10, bold=True, color="6B7C93")
-    val_f = Font(name="Calibri", size=10, color="1E2A44")
-    head_f = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-    head_fill = PatternFill("solid", fgColor=NAVY)
-    thin = Side(style="thin", color=LINE)
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    # --- header block: what this file is, who it's about, and when it was produced ---
-    ws["A1"] = "Agent Detail — Audit Export"
-    ws["A1"].font = title_f
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(COLUMNS))
-
-    meta = [
-        ("Agent", agent),
-        ("Date range", f"{range_label}   ({start} to {end})"),
-        ("Generated", datetime.datetime.now().strftime("%Y-%m-%d %H:%M")),
-        ("Summary", f"Closed {summary.get('closed', 0)}   ·   "
-                    f"Enrolled {summary.get('enrolled', 0)}   ·   "
-                    f"Total {summary.get('total', 0)}"),
-    ]
-    r = 2
-    for label, value in meta:
-        ws.cell(row=r, column=1, value=label).font = lbl_f
-        c = ws.cell(row=r, column=2, value=value)
-        c.font = val_f
-        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=len(COLUMNS))
-        r += 1
-
-    ws.cell(row=r, column=1, value="Source: TLDCRM (read-only). "
-                                   "Blank enroller = the agent enrolled the deal themselves.").font = lbl_f
-    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=len(COLUMNS))
-    head_row = r + 2
-
-    # --- table ---
-    for i, (header, _key, width) in enumerate(COLUMNS, start=1):
-        c = ws.cell(row=head_row, column=i, value=header)
-        c.font = head_f
-        c.fill = head_fill
-        c.alignment = Alignment(horizontal="left", vertical="center")
-        c.border = border
-        ws.column_dimensions[get_column_letter(i)].width = width
-    ws.row_dimensions[head_row].height = 20
-
-    for n, row in enumerate(rows, start=head_row + 1):
-        for i, (_header, key, _w) in enumerate(COLUMNS, start=1):
+    # who this report is for (the Agent column shows the closer, which isn't the same
+    # person on rows they only enrolled) + the range, then a blank line before the table
+    ws.append([f"Agent: {agent}"])
+    ws.append([f"Range: {start} to {end}"])
+    ws.append([])
+    ws.append([h for h, _k in COLUMNS])
+    for row in rows:
+        line = []
+        for _h, key in COLUMNS:
             val = row.get(key)
-            val = "—" if val in (None, "") else val
-            if key == "lead_id":
+            val = "" if val is None else val
+            if key == "lead_id" and str(val).strip():
                 try:
-                    val = int(str(val))          # keep lead ids numeric for sorting in Excel
+                    val = int(str(val))          # keep lead ids numeric so Excel sorts them right
                 except (TypeError, ValueError):
                     pass
-            c = ws.cell(row=n, column=i, value=val)
-            c.font = val_f
-            c.border = border
-            c.alignment = Alignment(horizontal="left")
-
-    if not rows:
-        c = ws.cell(row=head_row + 1, column=1, value="No deals for this person in this range.")
-        c.font = val_f
-        ws.merge_cells(start_row=head_row + 1, start_column=1,
-                       end_row=head_row + 1, end_column=len(COLUMNS))
-
-    ws.freeze_panes = ws.cell(row=head_row + 1, column=1)   # keep headers visible when scrolling
-    ws.auto_filter.ref = (f"A{head_row}:"
-                          f"{get_column_letter(len(COLUMNS))}{head_row + max(len(rows), 1)}")
+            line.append(val)
+        ws.append(line)
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f"AgentDetail_{safe_name(agent)}_{start}_{end}.xlsx"
-    return buf, fname
+    return buf, f"AgentDetail_{safe_name(agent)}_{start}_{end}.xlsx"
