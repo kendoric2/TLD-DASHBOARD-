@@ -289,9 +289,14 @@ function render(d) {
 
   $("#updated").textContent = new Date().toLocaleString();
   const dr = d.date_range ? ` · ${d.date_range.start} → ${d.date_range.end}` : "";
-  $("#footer").textContent = (d.demo
+  // A cached range is only served after TLD confirms nothing in it changed — but say so
+  // anyway, so a cached number is never silently mistaken for a fresh one.
+  const src = d.demo
     ? "Showing sample data — add your TLDCRM API key to .env to go live."
-    : "Live, read-only data pulled from TLDCRM.") + dr;
+    : (d.cached_at
+        ? `Saved copy from ${d.cached_at}, re-checked against TLDCRM just now — nothing changed.`
+        : "Live, read-only data pulled from TLDCRM.");
+  $("#footer").textContent = src + dr;
 }
 
 function renderKPIs(k) {

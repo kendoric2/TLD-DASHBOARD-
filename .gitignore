@@ -13,6 +13,9 @@ docs/
 # Logs / metrics — local operational data, not committed
 logs/
 
+# Saved TLD rows for past ranges — derived data, rebuilt on demand
+cache/
+
 # Python
 __pycache__/
 *.pyc

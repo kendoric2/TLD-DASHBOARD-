@@ -1,8 +1,18 @@
-# Deployment Plan — hosting the dashboard for the team (PARKED)
+# Deployment Plan — hosting the dashboard for the team (SUPERSEDED)
 
-**Status: parked / not started.** This captures how we plan to take the dashboard from
-a local Mac tool to a hosted website for the team. Nothing here is built yet — when
-we're ready to move forward, start at *Phased build* below.
+> **⚠️ SUPERSEDED by `DEPLOYMENT-GUIDE.md`. Follow that instead.**
+>
+> This plan's centrepiece — a Postgres store plus a background worker that pre-stores each
+> day's numbers — is no longer the direction. We removed persistent storage from the app
+> because cached/stored data repeatedly went stale or blank (frozen bad responses and
+> schema drift), and rebuilding a larger version of that would reintroduce the same class
+> of bug. The app now pulls live from TLD on every request.
+>
+> Kept for reference: the day-grain composition idea is still the right answer *if* TLD
+> ever objects to call volume. Revisit it then, not before.
+
+**Status: parked / not started.** This captures how we planned to take the dashboard from
+a local Mac tool to a hosted website for the team. Nothing here is built.
 
 ## Goal & priorities
 

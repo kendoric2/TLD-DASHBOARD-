@@ -25,6 +25,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
+import cache
 import metrics
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -51,6 +52,12 @@ _CPA_INFLIGHT = {}              # {(start, end): Event} — dedupes concurrent f
 # instead of re-fetching the whole range each time. In memory only, like everything else.
 _DETAIL_CACHE = {}              # {(start, end): (fetched_at, rows, people)}
 _DETAIL_LOCK = threading.Lock()
+
+# Result of "has this past range changed since we cached it?", memoized for a few seconds
+# so one page load validates once instead of once per query.
+_VALID_CACHE = {}               # {(start, end, since): (checked_at, unchanged?)}
+_VALID_TTL = 20                 # seconds
+_VALID_LOCK = threading.Lock()
 
 
 def date_range_for(range_key):
@@ -181,7 +188,8 @@ class TLDCRMClient:
         """Combined leaderboard (agents + fronters) for a date range, optionally filtered to a
         single carrier. Returns {"board": [...], "carriers": [every carrier in the range]} so
         the header dropdown can offer the full list. Always a live pull."""
-        rows = _dedupe_rows(self.run("policies_ids", start, end))
+        raw, _cached_at = self.cached_rows("policies_ids", start, end)
+        rows = _dedupe_rows(raw)
         carriers = sorted({(str(r.get("carrier_name") or "").strip() or "—") for r in rows})
         if carrier:
             rows = [r for r in rows if (str(r.get("carrier_name") or "").strip() or "—") == carrier]
@@ -230,6 +238,19 @@ class TLDCRMClient:
                     metrics.log("agent_cpa", start=start, end=end, source="mem-cache")
                     return hit[1]
 
+            # Disk: a fully-past range, gated by the SAME change check as the policy rows —
+            # if nothing in the range moved, the report can't have moved either.
+            disk = cache.load("agent_cpa", start, end, "v1")
+            if disk and self._range_unchanged_since(start, end, disk["fetched_at"]):
+                result = disk["rows"]
+                result["cached_at"] = disk["fetched_at"]
+                with _CPA_LOCK:
+                    _CPA_CACHE[cache_key] = (now, result)
+                metrics.log("agent_cpa", start=start, end=end, source="mem-cache")
+                return result
+            if disk:
+                cache.drop("agent_cpa", start, end, "v1")    # verified out of date
+
         with _CPA_LOCK:
             ev = _CPA_INFLIGHT.get(cache_key)
             leader = ev is None
@@ -250,6 +271,7 @@ class TLDCRMClient:
             if _cpa_has_data(result):
                 with _CPA_LOCK:
                     _CPA_CACHE[cache_key] = (time.time(), result)
+                cache.save("agent_cpa", start, end, "v1", result)   # empty is never saved
             else:
                 print(f"[agent_cpa] {start}->{end}: empty result — not cached (will retry)",
                       file=sys.stderr)
@@ -359,6 +381,56 @@ class TLDCRMClient:
         sales, calls = _t("sales"), _t("calls_billable")
         return round(sales / calls * 100, 1) if calls else 0.0
 
+    def _changed_count(self, start, end, since):
+        """How many policies in this range have been modified since `since`
+        ('YYYY-MM-DD HH:MM:SS'). One fast aggregate — ~0.6s. TLD honors date_modified
+        alongside the sale range (proved by probe_change_detect.py: an impossible
+        'modified after tomorrow' window correctly returned 0)."""
+        s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
+        body = {"aggregates": True, "aggregate": True, "columns": ["tql_cnt_policy_id"],
+                "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1,
+                "date_modified": since, "date_modified_end": "2099-12-31 23:59:59"}
+        resp = config.egress_get("policies", body, timeout=max(self.timeout, 60))
+        rows = resp if isinstance(resp, list) else []
+        return _first_num(rows)
+
+    def _range_unchanged_since(self, start, end, since):
+        """True when NOTHING in the range has changed since we cached it — i.e. the cached
+        copy is provably identical to TLD. Memoized briefly so one page load (dashboard +
+        board + detail) shares a single validation call instead of repeating it.
+        On any error we return False: re-pulling is always safe, serving stale isn't."""
+        key = (start, end, since)
+        now = time.time()
+        with _VALID_LOCK:
+            hit = _VALID_CACHE.get(key)
+            if hit and now - hit[0] < _VALID_TTL:
+                return hit[1]
+        try:
+            ok = self._changed_count(start, end, since) == 0
+        except Exception:
+            ok = False
+        with _VALID_LOCK:
+            _VALID_CACHE[key] = (time.time(), ok)
+        return ok
+
+    def cached_rows(self, query_name, start, end):
+        """Raw rows for a query, served from disk when the range is fully past AND
+        verified unchanged. Otherwise pulled live and re-cached. Never caches an empty
+        result, and the cache key includes the query's columns, so a query that later
+        asks for more columns can't be served older, thinner rows."""
+        if not cache.is_final(end):
+            return self.run(query_name, start, end), None      # includes today -> always live
+        sig = cache.columns_sig(PAYLOADS[query_name]["payload"])
+        hit = cache.load(query_name, start, end, sig)
+        if hit and self._range_unchanged_since(start, end, hit["fetched_at"]):
+            metrics.log(query_name, query=query_name, start=start, end=end, source="mem-cache")
+            return hit["rows"], hit["fetched_at"]
+        if hit:
+            cache.drop(query_name, start, end, sig)             # verified out of date
+        rows = self.run(query_name, start, end)
+        cache.save(query_name, start, end, sig, rows)
+        return rows, None
+
     def _sep_map(self, start, end, pad_days=3):
         """{lead_id: sep} for every lead that CONVERTED in the range (padded a few days).
 
@@ -392,9 +464,9 @@ class TLDCRMClient:
         else:
             # policies and the SEP lookup are independent — fetch them side by side
             with ThreadPoolExecutor(max_workers=2) as pool:
-                fut_pol = pool.submit(self.run, "policy_detail", start, end)
+                fut_pol = pool.submit(self.cached_rows, "policy_detail", start, end)
                 fut_sep = pool.submit(self._sep_map, start, end)
-                policies = _dedupe_rows(fut_pol.result())     # deduped + stage=sale
+                policies = _dedupe_rows(fut_pol.result()[0])  # deduped + stage=sale
                 try:
                     sep = fut_sep.result()
                 except Exception:
@@ -443,7 +515,7 @@ class TLDCRMClient:
         # All queries are independent and filtered server-side, so run them
         # concurrently — the dashboard loads in ~one round-trip instead of seven.
         jobs = {
-            "policy_rows": lambda: self.run("policies_ids", start, end),
+            "policy_rows": lambda: self.cached_rows("policies_ids", start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
             "recent":     lambda: self.run("recent_sales"),
         }
@@ -464,7 +536,8 @@ class TLDCRMClient:
         # One policies pull, deduped ONCE, then sliced so the numbers can't disagree:
         #   • Policies by Carrier: deduped, ALL carriers (incl GTL) -> matches the CRM table
         #   • Policies Sold + enrollments: deduped AND GTL-excluded (separate product line)
-        deduped_all = _dedupe_rows(results.get("policy_rows") or [])
+        policy_rows, cached_at = results.get("policy_rows") or ([], None)
+        deduped_all = _dedupe_rows(policy_rows)
         excluded = config.EXCLUDED_POLICY_CARRIERS
         kept_policies = [r for r in deduped_all
                          if str(r.get("carrier_name") or "").strip().upper() not in excluded]
@@ -492,6 +565,7 @@ class TLDCRMClient:
         data = {
             "demo": False,
             "range_label": range_label,
+            "cached_at": cached_at,          # set only when served from a verified cache
             "date_range": {"start": start, "end": end},
             "kpis": {
                 "policies_sold": policies,
