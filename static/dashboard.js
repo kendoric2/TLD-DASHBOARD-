@@ -17,6 +17,8 @@ let stateByAbbr = {};        // state abbr -> its breakdown, for click-through
 let selectedActiveCarrier = null;  // carrier row selected in the Active Policies tile
 let activeByCarrier = {};          // carrier -> its active breakdown (incl states)
 let activeCombined = null;         // aggregate active-by-state across all carriers (default view)
+let lastDetailRows = [];           // Agent Detail rows, kept so sorting never refetches
+let detailSortKey = "date_sold", detailSortDir = -1;   // newest first by default
 let selectedEnroller = null;       // enroller row selected in the Enrollments tile
 let enrollById = {};               // fronter_id -> enroller (incl detail)
 let boardOpen = true;     // sales board expanded (true) or collapsed to its tab (false)
@@ -789,8 +791,39 @@ async function loadDetail(agent){
     }
     const t = d.summary || {};
     sum.innerHTML = `<b>${who}</b> · closed <b>${t.closed || 0}</b> · enrolled <b>${t.enrolled || 0}</b> · total <b>${t.total || 0}</b>`;
-    const rows = d.rows || [];
-    body.innerHTML = rows.length ? rows.map(r => `
+    lastDetailRows = d.rows || [];
+    renderDetailRows();
+  } catch (err) {
+    sum.textContent = "Could not load the agent detail.";
+  }
+}
+
+/* Detail table sorting — click a column to sort, click again to reverse. Text columns go
+   A→Z first, dates/ids newest-or-highest first. Blanks always sink to the bottom so an
+   empty SEP or self-enrolled row never buries the real values. Sorts in place, no refetch. */
+function sortDetailRows(rows){
+  const k = detailSortKey, dir = detailSortDir;
+  return [...(rows || [])].sort((a, b) => {
+    const x = a[k] ?? "", y = b[k] ?? "";
+    const xb = x === "" || x == null, yb = y === "" || y == null;
+    if (xb !== yb) return xb ? 1 : -1;                       // blanks last, either direction
+    if (xb && yb) return 0;
+    if (k === "lead_id") return dir * ((Number(x) || 0) - (Number(y) || 0));
+    return dir * String(x).localeCompare(String(y));
+  });
+}
+function updateDetailSortArrows(){
+  document.querySelectorAll("th[data-dsort]").forEach(th => {
+    if (!th.dataset.label) th.dataset.label = th.textContent.trim();
+    const active = th.getAttribute("data-dsort") === detailSortKey;
+    th.classList.toggle("sorted", active);
+    th.textContent = th.dataset.label + (active ? (detailSortDir === 1 ? " ▲" : " ▼") : "");
+  });
+}
+function renderDetailRows(){
+  updateDetailSortArrows();
+  const rows = sortDetailRows(lastDetailRows);
+  $("#detailRows").innerHTML = rows.length ? rows.map(r => `
       <tr>
         <td>${r.date_sold || ""}</td>
         <td>${r.lead_id ?? ""}</td>
@@ -801,11 +834,16 @@ async function loadDetail(agent){
         <td>${r.plan || '<span class="dash">—</span>'}</td>
         <td class="sep-tag">${r.sep || '<span class="dash">—</span>'}</td>
       </tr>`).join("")
-      : '<tr><td colspan="8" class="dash" style="padding:14px">No deals for this person in this range.</td></tr>';
-  } catch (err) {
-    sum.textContent = "Could not load the agent detail.";
-  }
+    : '<tr><td colspan="8" class="dash" style="padding:14px">No deals for this person in this range.</td></tr>';
 }
+document.querySelectorAll("th[data-dsort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.getAttribute("data-dsort");
+    if (detailSortKey === k) detailSortDir *= -1;                     // same column -> flip
+    else { detailSortKey = k; detailSortDir = (k === "date_sold" || k === "lead_id") ? -1 : 1; }
+    renderDetailRows();
+  });
+});
 
 function fillDetailPeople(people, selected){
   const sel = $("#detailAgent");
