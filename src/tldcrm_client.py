@@ -291,18 +291,10 @@ class TLDCRMClient:
             "limit": 1000,                           # cover the full roster (matches agent_policies)
             "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1,
         }
-        # This report is the slowest thing we touch (~30s for a month) and we need it TWICE:
-        # once org-wide, once scoped to Falcon for the conversion rate. They're independent,
-        # so run them side by side — sequentially this was ~60s, together it's ~30s.
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            fut_main = pool.submit(config.egress_get, "report_cpa_agent", body,
-                                   max(self.timeout, 90))
-            fut_conv = pool.submit(self._falcon_conversion, start, end)
-            resp = fut_main.result()                     # a failure here propagates, as before
-            try:
-                conversion = fut_conv.result()
-            except Exception:
-                conversion = 0.0                         # never let conversion sink the tiles
+        # One org-wide call covers every tile. Conversion used to need a SECOND, Falcon-scoped
+        # call, but it's now all-vendor — and the org-wide totals already carry sales and
+        # billable calls, so we derive it below instead of paying for another ~30s report.
+        resp = config.egress_get("report_cpa_agent", body, timeout=max(self.timeout, 90))
 
         # report_cpa_agent returns {data|results|rows: [...], totals: {...}} (sometimes
         # wrapped in "response", which egress_get already peels). Pull out rows + totals.
@@ -342,9 +334,12 @@ class TLDCRMClient:
                    "cpa": round(tcost / tsales, 2) if tsales else 0,
                    "billable_calls": tcalls}
 
-        # Conversion = FALCON Sales / billable calls (the CRM 'Sales / All Calls %').
-        # Already fetched in parallel with the org-wide report above; 0.0 if it failed.
-        tot["conversion"] = conversion
+        # Conversion = Sales / billable CALLS across ALL vendors — the same 'Sales / All
+        # Calls %' the CRM shows, just not scoped to one lead source. Derived from the totals
+        # we already have, so it matches Total Spend / Blended CPA / Billable Calls in scope.
+        # (Billable CALLS, never billable leads — that mistake made it read ~5% high.)
+        tot["conversion"] = (round(tot["sales"] / tot["billable_calls"] * 100, 1)
+                             if tot.get("billable_calls") else 0.0)
 
         # One-line diagnostic to the terminal (stderr) — does NOT touch the JSON the browser sees.
         print(f"[agent_cpa] {start}->{end}: {len(rows)} report rows; "
@@ -353,33 +348,10 @@ class TLDCRMClient:
 
         return {"by_agent": out, "totals": tot}
 
-    def _falcon_conversion(self, start, end):
-        """Conversion = Sales / billable CALLS for FALCON, from report_cpa_agent scoped to
-        the Falcon vendor — matches the CRM Vendor CPA 'Sales / All Calls %' (whose 'All
-        Calls' column is the billable-call count, = calls_billable). Note: vendorperformance
-        'Billable' counts billable LEADS, not calls, which is why it ran high."""
-        s0, e1 = f"{start} 00:00:00", f"{end} 23:59:59"
-        body = {"columns": ["sales", "calls_billable"], "vendor_id": config.FALCON_VENDOR_ID,
-                "limit": 2000, "date": s0, "date_end": e1, "date_sold": s0, "date_sold_end": e1}
-        resp = config.egress_get("report_cpa_agent", body, timeout=max(self.timeout, 90))
-        rows, totals = [], {}
-        if isinstance(resp, dict):
-            for k in ("results", "data", "rows", "report", "records", "agents"):
-                if isinstance(resp.get(k), list):
-                    rows = resp[k]
-                    break
-            if isinstance(resp.get("totals"), dict):
-                totals = resp["totals"]
-        elif isinstance(resp, list):
-            rows = resp
-
-        def _t(col):
-            if totals.get(col) not in (None, ""):
-                return _num(totals.get(col))
-            return sum(_num(r.get(col)) for r in rows if isinstance(r, dict))
-
-        sales, calls = _t("sales"), _t("calls_billable")
-        return round(sales / calls * 100, 1) if calls else 0.0
+    # (_falcon_conversion was removed when Conversion Rate became all-vendor: a second
+    # vendor made a Falcon-only rate inconsistent with the all-vendor tiles beside it.
+    # The rate is now derived from the org-wide totals, saving a ~30s report call.
+    # config.FALCON_VENDOR_ID still exists for the probes that scope to one vendor.)
 
     def _changed_count(self, start, end, since):
         """How many policies in this range have been modified since `since`
