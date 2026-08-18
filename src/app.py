@@ -172,6 +172,43 @@ def api_agent_detail():
                         "summary": {"closed": 0, "enrolled": 0, "total": 0}})
 
 
+@app.route("/api/vendors")
+def api_vendors():
+    """Vendors tab: catalogue, lead intake, and disposition breakdown for a range."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    vendor = (request.args.get("vendor_id") or "").strip() or None
+    client = _client()
+    if client is None:
+        return jsonify({"demo": True, "range_label": label, "vendors": [],
+                        "leads": {"by_vendor": [], "totals": {}}, "dispo": None})
+
+    data = {"demo": False, "range_label": label, "vendor_id": vendor,
+            "date_range": {"start": start, "end": end}}
+    # independent pulls — run them together
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_cat = pool.submit(client.vendor_catalogue)
+        f_leads = pool.submit(client.vendor_leads, start, end, vendor)
+        f_dispo = (pool.submit(client.dispo_breakdown, start, end, vendor)
+                   if request.args.get("dispo") else None)
+        f_cost = (pool.submit(client.vendor_cost, start, end, vendor)
+                  if request.args.get("cost") else None)
+        for key, fut in (("vendors", f_cat), ("leads", f_leads),
+                         ("dispo", f_dispo), ("cost", f_cost)):
+            if fut is None:
+                data[key] = None
+                continue
+            try:
+                data[key] = fut.result()
+            except Exception as e:
+                data[key] = None
+                data.setdefault("errors", []).append(f"{key}: {e}")
+    return jsonify(data)
+
+
 @app.route("/api/agent_detail/export")
 def api_agent_detail_export():
     """Download one person's deals as a formatted .xlsx for an audit."""

@@ -111,6 +111,9 @@ header{
 .btn.export:disabled{background:#B9C4D2;border-color:#B9C4D2;cursor:not-allowed}
 .detail-summary{font-size:13px;color:var(--muted);margin-bottom:10px;min-height:18px}
 .detail-summary b{color:var(--brand-dark);font-size:15px}
+.vendor-cost{margin:0 0 14px}
+.vendor-cost .kpi{padding:12px 14px}
+.vendor-cost .kpi .value{font-size:21px;margin:4px 0 2px}
 .pill-role{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;text-transform:capitalize}
 .pill-role.closed{background:#E5F6EE;color:#1B7A4B}
 .pill-role.enrolled{background:#E8ECF5;color:#182A54}

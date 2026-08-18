@@ -10,7 +10,14 @@ Sample values are pulled in small COLUMN BATCHES (wide endpoints like policies
 have ~2000 columns and the API rejects asking for them all at once).
 
 Requires openpyxl:   pip install openpyxl
-Run:                  python3 sandbox/probes/probe_all_columns.py
+
+Run everything (slow — policies alone is ~2000 columns):
+    python3 sandbox/probes/probe_all_columns.py
+
+Run only certain endpoints and MERGE them into the existing file (fast — use this
+when new endpoints get enabled):
+    python3 sandbox/probes/probe_all_columns.py dialer_leads lead_logs vendor_logs
+
 Output:               egress_columns.xlsx  (saved in the project root)
 """
 import os
@@ -30,8 +37,13 @@ except ImportError:
 config.require_creds()
 
 # ---- settings you can tweak ----
-ENDPOINTS = ["policies", "leads", "agentcpa", "vendors", "users",
-             "vendorperformance", "report_cpa_agent", "tldialer/report_agentcpa"]
+ALL_ENDPOINTS = ["policies", "leads", "agentcpa", "vendors", "users",
+                 "vendorperformance", "report_cpa_agent", "tldialer/report_agentcpa",
+                 # enabled later — the dialer/log side
+                 "dialer_leads", "lead_dialer_leads", "lead_logs", "vendor_logs"]
+# endpoints named on the command line -> do only those and merge into the existing file
+ENDPOINTS = sys.argv[1:] or ALL_ENDPOINTS
+MERGE = bool(sys.argv[1:])
 BATCH = 100          # how many columns to request per call (wide endpoints)
 SAMPLE_ROWS = 3      # rows pulled per batch to find a non-null value
 # sensitive substrings — show a placeholder instead of the real value
@@ -64,13 +76,38 @@ def first_value(col, rows):
 
 def columns_and_values(ep):
     """Return (column_names, {col: sample_value}). Handles report endpoints whose
-    /docs/columns returns data rows, and batches wide endpoints."""
-    docs = config.egress_get(f"{ep}/docs/columns")
+    /docs/columns returns data rows, and batches wide endpoints.
+
+    NOTE: `<endpoint>/docs/columns` is permissioned SEPARATELY from the endpoint itself,
+    so it can be blocked even when the endpoint works. When that happens we fall back to
+    sampling a row and using its keys — that's only TLD's default subset, not every
+    column, but it beats an empty sheet."""
+    try:
+        docs = config.egress_get(f"{ep}/docs/columns")
+    except Exception as ex:
+        print(f"      /docs/columns unavailable ({type(ex).__name__})")
+        docs = None
+
     if isinstance(docs, list) and docs and isinstance(docs[0], dict):
         cols = list(docs[0].keys())                       # report: docs IS data
         return cols, {c: first_value(c, docs) for c in cols}
 
     cols = [c for c in docs if isinstance(c, str)] if isinstance(docs, list) else []
+
+    if not cols:
+        note = docs if isinstance(docs, dict) else "no column list returned"
+        print(f"      /docs/columns not usable ({str(note)[:80]}) — sampling a row instead")
+        try:
+            rows, _ = p.as_rows(config.egress_get(ep, {"limit": 3}, timeout=60))
+        except Exception as ex:
+            print(f"      sampling failed too ({type(ex).__name__}) — skipping")
+            return [], {}
+        if rows and isinstance(rows[0], dict):
+            cols = sorted(rows[0].keys())
+            print(f"      recovered {len(cols)} column(s) from a sample row "
+                  f"(enable {ep}/docs/columns for the full list)")
+            return cols, {c: first_value(c, rows) for c in cols}
+        return [], {}
     values = {}
     for i in range(0, len(cols), BATCH):
         chunk = cols[i:i + BATCH]
@@ -85,8 +122,19 @@ def columns_and_values(ep):
     return cols, values
 
 
-wb = Workbook()
-wb.remove(wb.active)
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                   "egress_columns.xlsx")
+
+# When specific endpoints are named, keep every sheet already in the file and just
+# refresh the ones we're re-pulling — so a targeted run can't wipe the reference.
+if MERGE and os.path.exists(OUT):
+    from openpyxl import load_workbook
+    wb = load_workbook(OUT)
+    print(f"merging into existing {os.path.basename(OUT)} "
+          f"({len(wb.sheetnames)} sheets already there)")
+else:
+    wb = Workbook()
+    wb.remove(wb.active)
 
 for ep in ENDPOINTS:
     print(f"... {ep}", flush=True)
@@ -96,7 +144,10 @@ for ep in ENDPOINTS:
         print(f"    skipped ({type(ex).__name__})")
         cols, values = [], {}
 
-    ws = wb.create_sheet(sheet_name(ep))
+    sn = sheet_name(ep)
+    if sn in wb.sheetnames:                 # refreshing an endpoint we already had
+        wb.remove(wb[sn])
+    ws = wb.create_sheet(sn)
     ws.append(["Column Name", "Sample Value"])
     ws["A1"].font = ws["B1"].font = Font(bold=True)
     for c in cols:
@@ -106,8 +157,6 @@ for ep in ENDPOINTS:
     ws.freeze_panes = "A2"
     print(f"    {len(cols)} columns, {sum(1 for c in cols if values.get(c))} with sample values")
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                   "egress_columns.xlsx")
 wb.save(OUT)
 print(f"\nSaved -> {OUT}")
 print(f"Sheets: {', '.join(wb.sheetnames)}")

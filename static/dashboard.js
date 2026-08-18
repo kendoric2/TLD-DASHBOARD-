@@ -63,9 +63,11 @@ function initDatePickers(){
   fpById["startDate"] = fpStart; fpById["endDate"] = fpEnd;
   fpById["boardStart"] = mk("boardStart"); fpById["boardEnd"] = mk("boardEnd");
   fpById["detailStart"] = mk("detailStart"); fpById["detailEnd"] = mk("detailEnd");
+  fpById["vendorStart"] = mk("vendorStart"); fpById["vendorEnd"] = mk("vendorEnd");
   [["startMenuBtn","startDate"], ["endMenuBtn","endDate"],
    ["boardStartMenuBtn","boardStart"], ["boardEndMenuBtn","boardEnd"],
-   ["detailStartMenuBtn","detailStart"], ["detailEndMenuBtn","detailEnd"]].forEach(([btn, fld]) => {
+   ["detailStartMenuBtn","detailStart"], ["detailEndMenuBtn","detailEnd"],
+   ["vendorStartMenuBtn","vendorStart"], ["vendorEndMenuBtn","vendorEnd"]].forEach(([btn, fld]) => {
     const el = $("#"+btn);
     if (el) el.addEventListener("click", (e) => { e.stopPropagation(); openRelMenu(fld, e.currentTarget); });
   });
@@ -765,16 +767,137 @@ function toggleBoard(){
 
 /* ===== Agent Detail tab — every deal a person closed or enrolled, with the SEP ===== */
 function showTab(which){
-  const detail = which === "detail";
-  $("#viewDetail").hidden = !detail;
-  $("#viewDashboard").hidden = detail;
-  $("#tabDetail").classList.toggle("active", detail);
-  $("#tabDashboard").classList.toggle("active", !detail);
-  if (detail && !$("#detailStart").value){          // first visit: default to the board's range
+  const views = {dashboard: "#viewDashboard", detail: "#viewDetail", vendors: "#viewVendors"};
+  const tabs = {dashboard: "#tabDashboard", detail: "#tabDetail", vendors: "#tabVendors"};
+  Object.keys(views).forEach(k => {
+    $(views[k]).hidden = (k !== which);
+    $(tabs[k]).classList.toggle("active", k === which);
+  });
+  closeRelMenu();
+  if (which === "detail" && !$("#detailStart").value){   // first visit: inherit the board's range
     setPicker(fpById["detailStart"], "detailStart", parseDateInput($("#boardStart").value) || new Date());
     setPicker(fpById["detailEnd"], "detailEnd", parseDateInput($("#boardEnd").value) || new Date());
     loadDetail();
   }
+  if (which === "vendors" && !$("#vendorStart").value){
+    const today = new Date(); today.setHours(0,0,0,0);
+    setPicker(fpById["vendorStart"], "vendorStart", startOfWeek(today));
+    setPicker(fpById["vendorEnd"], "vendorEnd", today);
+    loadVendors();
+  }
+}
+
+/* ===== Vendors tab ===== */
+function vendorRange(){
+  return {s: pickerISO("vendorStart"), e: pickerISO("vendorEnd"),
+          v: $("#vendorPick") ? $("#vendorPick").value : ""};
+}
+async function loadVendors(){
+  const {s, e, v} = vendorRange();
+  const sum = $("#vendorSummary");
+  if (!s || !e){ sum.textContent = "Pick a start and end date."; return; }
+  if (e < s){ sum.textContent = "End date can’t be before the start date."; return; }
+  sum.textContent = "Loading…";
+  $("#dispoWrap").hidden = true;                        // dispo is per-range; make them re-load
+  try {
+    const qs = `range=custom&start=${s}&end=${e}` + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
+    const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
+    if (d.error){ sum.textContent = d.error; return; }
+    renderVendors(d);
+    loadVendorCost(s, e, v);          // slow report — fills in behind the lead table
+  } catch (err){ sum.textContent = "Could not load vendor data."; }
+}
+
+// Spend / CPA for the chosen vendor. Uses report_cpa_agent's costs_all, which is the
+// billed figure (verified against a real invoice); vendorperformance's Spend is leads-based
+// and reads ~39% low, so it is deliberately not used here.
+async function loadVendorCost(s, e, v){
+  const box = $("#vendorCost");
+  if (!box) return;
+  const card = (label, val, note) =>
+    `<div class="kpi"><div class="label">${label}</div><div class="value">${val}</div>
+     <div class="delta note">${note || ""}</div></div>`;
+  box.innerHTML = card("Spend", "…", "loading the cost report")
+                + card("Sales", "…", "") + card("CPA", "…", "");
+  try {
+    const qs = `range=custom&start=${s}&end=${e}&cost=1` + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
+    const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
+    const c = d.cost;
+    if (!c){ box.innerHTML = ""; return; }
+    const who = v ? ($("#vendorPick").selectedOptions[0] || {}).text || "vendor" : "all vendors";
+    const free = c.spend === 0;
+    box.innerHTML =
+        card("Spend", money2(c.spend), `${who} · billable calls x price`)
+      + card("Sales", (c.sales || 0).toLocaleString(), `${(c.calls_billable || 0).toLocaleString()} billable calls`)
+      + card("CPA", free ? '<span class="dash">—</span>' : money2(c.cpa),
+             free ? "no lead cost — worked from existing leads" : "spend ÷ sales");
+  } catch (err){ box.innerHTML = ""; }
+}
+function renderVendors(d){
+  const cat = {};
+  (d.vendors || []).forEach(v => cat[v.vendor_id] = v);
+  fillVendorPicker(d.vendors || [], d.leads || {});
+  const rows = (d.leads && d.leads.by_vendor) || [];
+  const t = (d.leads && d.leads.totals) || {};
+  const fmt = n => (n || 0).toLocaleString();
+  const pct = (a, b) => b ? (a / b * 100).toFixed(1) + "%" : '<span class="dash">—</span>';
+  $("#vendorSummary").innerHTML = rows.length
+    ? `<b>${fmt(t.leads)}</b> leads · <b>${fmt(t.billable)}</b> billable · <b>${fmt(t.sold)}</b> produced a policy`
+    : "No leads in this range.";
+  $("#vendorRows").innerHTML = rows.length ? rows.map(r => {
+    const c = cat[r.vendor_id] || {};
+    const price = c.price_inbound || c.price;
+    return `<tr>
+      <td>${r.vendor}</td>
+      <td class="num">${fmt(r.leads)}</td>
+      <td class="num">${fmt(r.billable)}</td>
+      <td class="num">${fmt(r.sold)}</td>
+      <td class="num">${pct(r.sold, r.billable)}</td>
+      <td class="num">${price ? "$" + Number(price).toFixed(2) : '<span class="dash">—</span>'}</td>
+      <td class="bd-car">${c.status || ""}</td>
+    </tr>`;
+  }).join("") : '<tr><td colspan="7" class="dash" style="padding:14px">No leads in this range.</td></tr>';
+  $("#vendorTotals").innerHTML = rows.length
+    ? `<tr><td>Totals</td><td class="num">${fmt(t.leads)}</td><td class="num">${fmt(t.billable)}</td><td class="num">${fmt(t.sold)}</td><td class="num">${pct(t.sold, t.billable)}</td><td></td><td></td></tr>` : "";
+}
+// The picker lists vendors WITH ACTIVITY first — the status flag can't be trusted
+// (FALCON is marked "inactive" while doing ~99% of the volume).
+function fillVendorPicker(catalogue, leads){
+  const sel = $("#vendorPick"); if (!sel) return;
+  const active = new Set((leads.by_vendor || []).map(v => String(v.vendor_id)));
+  const withData = catalogue.filter(v => active.has(String(v.vendor_id)));
+  const rest = catalogue.filter(v => !active.has(String(v.vendor_id)));
+  const opt = v => `<option value="${v.vendor_id}">${v.name}</option>`;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All vendors</option>'
+    + (withData.length ? `<optgroup label="Active in this range">${withData.map(opt).join("")}</optgroup>` : "")
+    + (rest.length ? `<optgroup label="No activity in this range">${rest.map(opt).join("")}</optgroup>` : "");
+  sel.value = cur;
+}
+async function loadDispo(){
+  const {s, e, v} = vendorRange();
+  const sum = $("#dispoSummary");
+  if (!s || !e){ sum.textContent = "Pick a start and end date first."; return; }
+  sum.textContent = "Loading dispositions… (first look at a long range takes a moment)";
+  try {
+    const qs = `range=custom&start=${s}&end=${e}&dispo=1` + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
+    const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
+    const dp = d.dispo;
+    if (!dp){ sum.textContent = "Could not load dispositions."; return; }
+    const rows = dp.dispositions || [];
+    const total = dp.total || 0;
+    sum.innerHTML = `<b>${total.toLocaleString()}</b> dispositions over ${dp.days} day(s)`
+      + (dp.cached_days ? ` · ${dp.cached_days} day(s) from saved data` : "");
+    const max = Math.max(1, ...rows.map(r => r.count));
+    $("#dispoRows").innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.status}</td>
+        <td class="num">${r.count.toLocaleString()}</td>
+        <td class="num">${total ? (r.count / total * 100).toFixed(1) + "%" : "—"}</td>
+        <td><div class="bar-track" style="min-width:120px"><div class="bar-fill" style="width:${(r.count / max * 100).toFixed(0)}%"></div></div></td>
+      </tr>`).join("");
+    $("#dispoWrap").hidden = false;
+  } catch (err){ sum.textContent = "Could not load dispositions."; }
 }
 
 async function loadDetail(agent){
@@ -873,6 +996,12 @@ function openAgentDetail(name){
 /* ---- GUI events ---- */
 $("#tabDashboard").addEventListener("click", () => showTab("dashboard"));
 $("#tabDetail").addEventListener("click", () => showTab("detail"));
+$("#tabVendors").addEventListener("click", () => showTab("vendors"));
+$("#vendorApply").addEventListener("click", loadVendors);
+$("#vendorPick").addEventListener("change", loadVendors);
+$("#dispoLoad").addEventListener("click", loadDispo);
+["vendorStart","vendorEnd"].forEach(id => { const el = $("#"+id);
+  if (el) el.addEventListener("keydown", ev => { if (ev.key === "Enter") loadVendors(); }); });
 $("#detailApply").addEventListener("click", () => loadDetail());
 $("#detailExport").addEventListener("click", () => {
   const who = $("#detailAgent").value;

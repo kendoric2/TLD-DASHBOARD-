@@ -353,6 +353,152 @@ class TLDCRMClient:
     # The rate is now derived from the org-wide totals, saving a ~30s report call.
     # config.FALCON_VENDOR_ID still exists for the probes that scope to one vendor.)
 
+    # ---------------------------------------------------------------- vendors tab ----
+    def vendor_catalogue(self):
+        """Every vendor: id, name, price, status. NOTE the status flag is unreliable —
+        FALCON is marked 'inactive' while doing ~99% of the volume — so callers should
+        rank/filter by ACTIVITY in the range, not by this flag."""
+        rows = config.egress_get("vendors", {
+            "columns": ["vendor_id", "name", "description", "price", "price_inbound",
+                        "status_name"], "limit": 500}, timeout=max(self.timeout, 60))
+        out = []
+        for r in (rows if isinstance(rows, list) else []):
+            if isinstance(r, dict) and r.get("vendor_id"):
+                out.append({"vendor_id": str(r["vendor_id"]),
+                            "name": str(r.get("name") or "").strip(),
+                            "description": str(r.get("description") or "").strip(),
+                            "price": _num(r.get("price")),
+                            "price_inbound": _num(r.get("price_inbound")),
+                            "status": str(r.get("status_name") or "").strip()})
+        out.sort(key=lambda v: v["name"].lower())
+        return out
+
+    def vendor_leads(self, start, end, vendor_id=None):
+        """Lead intake for the range: totals plus a per-vendor split. Leads are filtered on
+        date_created (TLD's leads exception). 'billable' means the lead cleared buffer time
+        and was invoiced; $0 sources like INBOUND/GENERAL are re-contacts of leads we
+        already owned, not purchased leads."""
+        body = {"columns": ["lead_id", "vendor_id", "billable", "converted", "policies_sold"],
+                "date_created": f"{start} 00:00:00", "date_created_end": f"{end} 23:59:59",
+                "limit": 200000}
+        if vendor_id:
+            body["vendor_id"] = vendor_id
+        rows = config.egress_get("leads", body, timeout=max(self.timeout, 240))
+        # vendor_name comes back EMPTY on this endpoint, so resolve names from the catalogue
+        try:
+            names = {v["vendor_id"]: v["name"] for v in self.vendor_catalogue()}
+        except Exception:
+            names = {}
+        by = {}
+        for r in (rows if isinstance(rows, list) else []):
+            if not isinstance(r, dict):
+                continue
+            vid = str(r.get("vendor_id") or "")
+            v = by.setdefault(vid, {"vendor_id": vid,
+                                    "vendor": names.get(vid) or f"vendor {vid}" if vid else "(none)",
+                                    "leads": 0, "billable": 0, "sold": 0})
+            v["leads"] += 1
+            if str(r.get("billable")) in ("1", "1.0", "True", "true"):
+                v["billable"] += 1
+            if _num(r.get("policies_sold")) >= 1:
+                v["sold"] += 1
+        out = sorted(by.values(), key=lambda v: -v["leads"])
+        return {"by_vendor": out,
+                "totals": {"leads": sum(v["leads"] for v in out),
+                           "billable": sum(v["billable"] for v in out),
+                           "sold": sum(v["sold"] for v in out)}}
+
+    def vendor_cost(self, start, end, vendor_id=None):
+        """Spend / sales / billable calls / CPA for one vendor (or org-wide) from
+        report_cpa_agent. costs_all IS vendor-filterable — verified: INBOUND and GENERAL
+        return $0, and the FALCON figure matches the actual invoice. Slow (~20-40s), so
+        callers should load it separately from the fast lead counts."""
+        body = {"columns": ["sales", "costs_all", "calls_billable"], "limit": 2000,
+                "date": f"{start} 00:00:00", "date_end": f"{end} 23:59:59",
+                "date_sold": f"{start} 00:00:00", "date_sold_end": f"{end} 23:59:59"}
+        if vendor_id:
+            body["vendor_id"] = vendor_id
+        resp = config.egress_get("report_cpa_agent", body, timeout=max(self.timeout, 180))
+        tot = (resp.get("totals") or {}) if isinstance(resp, dict) else {}
+        spend, sales = _num(tot.get("costs_all")), _num(tot.get("sales"))
+        calls = _num(tot.get("calls_billable"))
+        return {"spend": spend, "sales": sales, "calls_billable": calls,
+                "cpa": round(spend / sales, 2) if sales else 0,
+                "conversion": round(sales / calls * 100, 1) if calls else 0}
+
+    def _dispo_count(self, start, end, vendor_id=None):
+        """Fast COUNT of disposition events in a range. group_by is broken on this endpoint
+        (it collapses every status into one mislabelled bucket — see probe_dispo2.py), but
+        the tql_cnt total is exact, so we use it purely to validate cached day counts."""
+        body = {"aggregates": True, "aggregate": True, "columns": ["tql_cnt_action_id"],
+                "action": "status",
+                "date_created": f"{start} 00:00:00", "date_created_end": f"{end} 23:59:59"}
+        if vendor_id:
+            body["lead_vendor_id"] = vendor_id
+        resp = config.egress_get("lead_logs", body, timeout=max(self.timeout, 90))
+        return _first_num(resp if isinstance(resp, list) else [])
+
+    def _dispo_day(self, day, vendor_id=None):
+        """{disposition: count} for ONE day, from lead_logs rows where action='status'.
+        A finished day is cached permanently: lead_logs is an append-only event log, so a
+        past day's rows can't change (unlike policies, which get edited constantly)."""
+        sig = f"v{vendor_id or 'all'}"
+        hit = cache.load("dispo", day, day, sig)
+        if hit:
+            return hit["rows"], True
+        body = {"columns": ["action_id", "lead_status_name"], "action": "status",
+                "date_created": f"{day} 00:00:00", "date_created_end": f"{day} 23:59:59",
+                "limit": 200000}
+        if vendor_id:
+            body["lead_vendor_id"] = vendor_id
+        rows = config.egress_get("lead_logs", body, timeout=max(self.timeout, 240))
+        counts = {}
+        for r in (rows if isinstance(rows, list) else []):
+            if isinstance(r, dict):
+                k = str(r.get("lead_status_name") or "(blank)")
+                counts[k] = counts.get(k, 0) + 1
+        if counts:
+            cache.save("dispo", day, day, sig, counts)
+        return counts, False
+
+    def dispo_breakdown(self, start, end, vendor_id=None):
+        """Disposition counts across a range, assembled day by day so finished days come
+        from cache and only today is ever re-pulled. One count aggregate validates the whole
+        range at the end — if it disagrees with our total, the cached days are dropped and
+        rebuilt, so a bad day can't linger."""
+        d0 = datetime.date.fromisoformat(start)
+        d1 = datetime.date.fromisoformat(end)
+        days = [(d0 + datetime.timedelta(days=i)).isoformat() for i in range((d1 - d0).days + 1)]
+        days = days[:400]                                    # sanity guard on huge ranges
+
+        totals, cached_days = {}, 0
+        with ThreadPoolExecutor(max_workers=6) as pool:      # days are independent
+            futs = {pool.submit(self._dispo_day, d, vendor_id): d for d in days}
+            for fut in as_completed(futs):
+                try:
+                    counts, was_cached = fut.result()
+                except Exception:
+                    continue
+                cached_days += 1 if was_cached else 0
+                for k, v in counts.items():
+                    totals[k] = totals.get(k, 0) + v
+
+        ours = sum(totals.values())
+        try:                                                 # cheap, exact cross-check
+            theirs = self._dispo_count(start, end, vendor_id)
+        except Exception:
+            theirs = ours
+        if theirs and abs(ours - theirs) > max(2, theirs * 0.01):
+            for d in days:                                   # our days are wrong — rebuild
+                cache.drop("dispo", d, d, f"v{vendor_id or 'all'}")
+            print(f"[dispo] {start}..{end}: counted {ours:,} but TLD says {theirs:,} — "
+                  f"cache dropped, will rebuild", file=sys.stderr)
+
+        rows = [{"status": k, "count": v} for k, v in totals.items()]
+        rows.sort(key=lambda x: -x["count"])
+        return {"dispositions": rows, "total": ours, "reported_total": theirs,
+                "days": len(days), "cached_days": cached_days}
+
     def _changed_count(self, start, end, since):
         """How many policies in this range have been modified since `since`
         ('YYYY-MM-DD HH:MM:SS'). One fast aggregate — ~0.6s. TLD honors date_modified
