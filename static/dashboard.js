@@ -973,6 +973,42 @@ document.querySelectorAll("th[data-dsort]").forEach(th => {
   });
 });
 
+// One person's dispositions for the dates shown. Filtered server-side by name, so it's a
+// small fast query — no caching needed. "System Process" is a separate user, so automated
+// activity never lands in a person's numbers.
+async function loadAgentDispo(){
+  const who = $("#detailAgent").value;
+  const s = pickerISO("detailStart"), e = pickerISO("detailEnd");
+  const sum = $("#agentDispoSummary");
+  if (!who){ sum.textContent = "Pick a person above first."; return; }
+  if (!s || !e){ sum.textContent = "Pick a start and end date."; return; }
+  sum.textContent = "Loading dispositions…";
+  $("#agentDispoWrap").hidden = true;
+  try {
+    const d = await fetch(`/api/agent_detail?range=custom&start=${s}&end=${e}`
+      + `&agent=${encodeURIComponent(who)}&dispo=1`).then(r => r.json());
+    const dp = d.dispo || {};
+    const rows = dp.dispositions || [];
+    const total = dp.total || 0;
+    if (!rows.length){
+      // be explicit: nothing found vs. a name that never matched
+      sum.innerHTML = `No dispositions found for <b>${who}</b> in this range`
+        + (dp.searched ? ` <span class="dash">(searched: ${dp.searched.join(" / ")})</span>` : "");
+      return;
+    }
+    sum.innerHTML = `<b>${who}</b> · <b>${total.toLocaleString()}</b> dispositions`;
+    const max = Math.max(1, ...rows.map(r => r.count));
+    $("#agentDispoRows").innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.status}</td>
+        <td class="num">${r.count.toLocaleString()}</td>
+        <td class="num">${(r.count / total * 100).toFixed(1)}%</td>
+        <td><div class="bar-track" style="min-width:120px"><div class="bar-fill" style="width:${(r.count / max * 100).toFixed(0)}%"></div></div></td>
+      </tr>`).join("");
+    $("#agentDispoWrap").hidden = false;
+  } catch (err){ sum.textContent = "Could not load dispositions."; }
+}
+
 function fillDetailPeople(people, selected){
   const sel = $("#detailAgent");
   const cur = selected !== undefined ? selected : sel.value;
@@ -1012,7 +1048,9 @@ $("#detailExport").addEventListener("click", () => {
   window.location = `/api/agent_detail/export?range=custom&start=${s}&end=${e}`
     + `&agent=${encodeURIComponent(who)}&sort=${detailSortKey}&dir=${detailSortDir}`;
 });
-$("#detailAgent").addEventListener("change", () => loadDetail());
+$("#detailAgent").addEventListener("change", () => { loadDetail(); $("#agentDispoWrap").hidden = true;
+  $("#agentDispoSummary").textContent = "Load dispositions for this person."; });
+$("#agentDispoLoad").addEventListener("click", loadAgentDispo);
 ["detailStart","detailEnd"].forEach(id => { const el = $("#"+id);
   if (el) el.addEventListener("keydown", ev => { if (ev.key === "Enter") loadDetail(); }); });
 $("#boardList").addEventListener("click", e => {          // click a name on the board -> detail

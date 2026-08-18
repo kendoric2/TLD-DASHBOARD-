@@ -164,7 +164,11 @@ def api_agent_detail():
                         "summary": {"closed": 0, "enrolled": 0, "total": 0},
                         "range_label": label})
     try:
-        data = client.agent_detail(start, end, request.args.get("agent") or None)
+        agent = request.args.get("agent") or None
+        if request.args.get("dispo"):        # dispositions load separately, on demand
+            return jsonify({"dispo": client.agent_dispo(start, end, agent),
+                            "agent": agent, "range_label": label, "demo": False})
+        data = client.agent_detail(start, end, agent)
         data["range_label"] = label
         data["demo"] = False
         return jsonify(data)

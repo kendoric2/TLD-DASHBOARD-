@@ -354,6 +354,40 @@ class TLDCRMClient:
     # config.FALCON_VENDOR_ID still exists for the probes that scope to one vendor.)
 
     # ---------------------------------------------------------------- vendors tab ----
+    def agent_dispo(self, start, end, agent):
+        """Disposition counts for ONE person from lead_logs (action='status').
+
+        Filtering by user_full_name is exact and fast (verified: a filtered count matched a
+        locally counted one to the row), so no caching is needed — a busy agent is only
+        ~340 events/day.
+
+        NAME FORMATS DIFFER: policies say "Powers, Tony", lead_logs says "Tony Powers". We
+        try the converted form first, then the original. If both come back empty we say so
+        explicitly, so "no dispositions" can't be confused with a name that never matched."""
+        if not agent:
+            return {"dispositions": [], "total": 0, "searched": None}
+
+        tried, rows = [], []
+        for name in (_first_last(agent), agent):
+            if not name or name in tried:
+                continue
+            tried.append(name)
+            body = {"columns": ["action_id", "lead_status_name", "user_full_name"],
+                    "action": "status", "user_full_name": name, "limit": 200000,
+                    "date_created": f"{start} 00:00:00", "date_created_end": f"{end} 23:59:59"}
+            resp = config.egress_get("lead_logs", body, timeout=max(self.timeout, 180))
+            rows = [r for r in (resp if isinstance(resp, list) else []) if isinstance(r, dict)]
+            if rows:
+                break
+
+        counts = {}
+        for r in rows:
+            k = str(r.get("lead_status_name") or "(blank)")
+            counts[k] = counts.get(k, 0) + 1
+        out = [{"status": k, "count": v} for k, v in counts.items()]
+        out.sort(key=lambda x: -x["count"])
+        return {"dispositions": out, "total": sum(counts.values()), "searched": tried}
+
     def vendor_catalogue(self):
         """Every vendor: id, name, price, status. NOTE the status flag is unreliable —
         FALCON is marked 'inactive' while doing ~99% of the volume — so callers should
@@ -700,6 +734,16 @@ class TLDCRMClient:
         if errors:
             data["error"] = "Some metrics didn't load: " + "; ".join(errors)
         return data
+
+
+def _first_last(name):
+    """'Powers, Tony' -> 'Tony Powers'. Policies use "Last, First"; lead_logs uses
+    "First Last", and a server-side filter needs the exact string."""
+    s = str(name or "").strip()
+    if "," in s:
+        last, first = s.split(",", 1)
+        return f"{first.strip()} {last.strip()}".strip()
+    return s
 
 
 def _cpa_has_data(result):
