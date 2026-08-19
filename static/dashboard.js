@@ -910,7 +910,7 @@ async function loadBilled(){
         <td${/no agent|not available|timeout|after hours|drop/i.test(r.status) ? ' style="color:#E2574C;font-weight:600"' : ""}>${r.status || ""}</td>
         <td class="num">${r.talk_sec ? Math.round(r.talk_sec) + "s" : '<span class="dash">—</span>'}</td>
         <td class="num">${money(r.cost)}</td>
-        <td>${r.lead_id ?? ""}</td>
+        <td title="${r.dialer_lead_id ? "dialer id " + r.dialer_lead_id : ""}">${r.lead_id || '<span class="dash">—</span>'}</td>
       </tr>`).join("")
       : '<tr><td colspan="7" class="dash" style="padding:14px">No billed calls in this range.</td></tr>';
     $("#billedWrap").hidden = false;

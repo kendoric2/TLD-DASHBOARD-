@@ -57,7 +57,8 @@ BILLED_COLUMNS = [
     ("Disposition", "status"),
     ("Talk (sec)",  "talk_sec"),
     ("Cost",        "cost"),
-    ("Lead ID",     "lead_id"),
+    ("Lead ID",     "lead_id"),        # the CRM lead id (from lead_vendor_lead_code)
+    ("Dialer ID",   "dialer_lead_id"), # VICIdial's own id, for TLD support conversations
 ]
 
 
@@ -87,7 +88,7 @@ def build_billed(start, end, vendor_label, summary, rows):
                     val = float(val)
                 except (TypeError, ValueError):
                     pass
-            if key == "lead_id" and str(val).strip():
+            if key in ("lead_id", "dialer_lead_id") and str(val).strip():
                 try:
                     val = int(str(val))
                 except (TypeError, ValueError):

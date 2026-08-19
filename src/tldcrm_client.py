@@ -474,9 +474,13 @@ class TLDCRMClient:
         We ask the API to filter on `billable` as well, but we ALWAYS re-filter locally —
         if TLD ignores that filter (it has silently ignored several) the result is still
         correct, just fetched the long way."""
+        # IMPORTANT: the call log's `lead_id` is the DIALER's own id (7 digits, e.g. 1249602).
+        # The CRM lead id (9 digits, e.g. 146334758) lives in `lead_vendor_lead_code` — the
+        # standard VICIdial slot for "the id in the system that sent us this lead". Verified
+        # by probe_lead_id_join.py: it was the only column of 213 containing real CRM ids.
         body = {"columns": ["call_date", "call_direction", "status_name", "agent_name",
-                            "vendor_id", "vendor_description", "lead_id", "billable",
-                            "cost", "duration_call", "sec_talk"],
+                            "vendor_id", "vendor_description", "lead_vendor_lead_code",
+                            "lead_id", "billable", "cost", "duration_call", "sec_talk"],
                 "limit": 200000, "billable": 1, "call_direction": "INBOUND",
                 "call_date": f"{start} 00:00:00", "call_date_end": f"{end} 23:59:59"}
         if vendor_id:
@@ -494,7 +498,8 @@ class TLDCRMClient:
                 "vendor": str(r.get("vendor_description") or "").strip(),
                 "agent": str(r.get("agent_name") or "").strip(),
                 "status": str(r.get("status_name") or "").strip(),
-                "lead_id": r.get("lead_id"),
+                "lead_id": r.get("lead_vendor_lead_code") or "",   # the CRM lead id
+                "dialer_lead_id": r.get("lead_id"),                # VICIdial's own id
                 "talk_sec": _num(r.get("sec_talk")),
                 "duration": str(r.get("duration_call") or ""),
                 "cost": _num(r.get("cost")),
