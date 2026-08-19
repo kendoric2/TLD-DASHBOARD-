@@ -197,7 +197,12 @@ def api_vendors():
     with ThreadPoolExecutor(max_workers=3) as pool:
         f_cat = pool.submit(client.vendor_catalogue)
         f_leads = pool.submit(client.vendor_leads, start, end, vendor)
-        f_dispo = (pool.submit(client.dispo_breakdown, start, end, vendor)
+        # Direction matters: you're only billed for INBOUND, and outbound is the auto-dialer
+        # working lists (70% answering machines), which says nothing about vendor quality.
+        direction = (request.args.get("direction") or "INBOUND").upper()
+        if direction == "ALL":
+            direction = None
+        f_dispo = (pool.submit(client.dispo_breakdown, start, end, vendor, direction)
                    if request.args.get("dispo") else None)
         f_cost = (pool.submit(client.vendor_cost, start, end, vendor)
                   if request.args.get("cost") else None)

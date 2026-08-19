@@ -880,13 +880,16 @@ async function loadDispo(){
   if (!s || !e){ sum.textContent = "Pick a start and end date first."; return; }
   sum.textContent = "Loading dispositions… (first look at a long range takes a moment)";
   try {
-    const qs = `range=custom&start=${s}&end=${e}&dispo=1` + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
+    const dir = $("#dispoDirection") ? $("#dispoDirection").value : "INBOUND";
+    const qs = `range=custom&start=${s}&end=${e}&dispo=1&direction=${dir}`
+      + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
     const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
     const dp = d.dispo;
     if (!dp){ sum.textContent = "Could not load dispositions."; return; }
     const rows = dp.dispositions || [];
     const total = dp.total || 0;
-    sum.innerHTML = `<b>${total.toLocaleString()}</b> dispositions over ${dp.days} day(s)`
+    const label = dir === "INBOUND" ? "inbound calls" : dir === "OUTBOUND" ? "outbound calls" : "calls";
+    sum.innerHTML = `<b>${total.toLocaleString()}</b> ${label} over ${dp.days} day(s)`
       + (dp.cached_days ? ` · ${dp.cached_days} day(s) from saved data` : "");
     const max = Math.max(1, ...rows.map(r => r.count));
     $("#dispoRows").innerHTML = rows.map(r => `
@@ -1036,6 +1039,7 @@ $("#tabVendors").addEventListener("click", () => showTab("vendors"));
 $("#vendorApply").addEventListener("click", loadVendors);
 $("#vendorPick").addEventListener("change", loadVendors);
 $("#dispoLoad").addEventListener("click", loadDispo);
+$("#dispoDirection").addEventListener("change", () => { if (!$("#dispoWrap").hidden) loadDispo(); });
 ["vendorStart","vendorEnd"].forEach(id => { const el = $("#"+id);
   if (el) el.addEventListener("keydown", ev => { if (ev.key === "Enter") loadVendors(); }); });
 $("#detailApply").addEventListener("click", () => loadDetail());

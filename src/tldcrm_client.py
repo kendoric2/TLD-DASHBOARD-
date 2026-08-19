@@ -464,7 +464,7 @@ class TLDCRMClient:
                 "cpa": round(spend / sales, 2) if sales else 0,
                 "conversion": round(sales / calls * 100, 1) if calls else 0}
 
-    def _dispo_count(self, start, end, vendor_id=None):
+    def _dispo_count(self, start, end, vendor_id=None, direction=None):
         """Fast COUNT of calls in a range, used only to sanity-check cached day counts.
         group_by is broken across TLD (it collapses everything into one mislabelled bucket —
         see probe_dispo2.py), but plain tql_cnt totals have always been exact."""
@@ -472,10 +472,12 @@ class TLDCRMClient:
                 "call_date": f"{start} 00:00:00", "call_date_end": f"{end} 23:59:59"}
         if vendor_id:
             body["vendor_id"] = vendor_id
+        if direction:
+            body["call_direction"] = direction.upper()
         resp = config.egress_get(CALL_LOG, body, timeout=max(self.timeout, 90))
         return _first_num(resp if isinstance(resp, list) else [])
 
-    def _dispo_day(self, day, vendor_id=None):
+    def _dispo_day(self, day, vendor_id=None, direction=None):
         """{call disposition: count} for ONE day from the dialer's call log.
 
         These are real per-call outcomes (Answering Machine, Not Interested, Disconnected,
@@ -484,7 +486,7 @@ class TLDCRMClient:
 
         A finished day is cached: a completed call's outcome doesn't change, and at ~33k
         calls/day a month would otherwise be a million rows on every view."""
-        sig = f"v{vendor_id or 'all'}"
+        sig = f"v{vendor_id or 'all'}_{(direction or 'all').lower()}"
         hit = cache.load("calldispo", day, day, sig)
         if hit:
             return hit["rows"], True
@@ -492,6 +494,8 @@ class TLDCRMClient:
                 "call_date": f"{day} 00:00:00", "call_date_end": f"{day} 23:59:59"}
         if vendor_id:
             body["vendor_id"] = vendor_id
+        if direction:
+            body["call_direction"] = direction.upper()
         rows = config.egress_get(CALL_LOG, body, timeout=max(self.timeout, 300))
         counts = {}
         for r in (rows if isinstance(rows, list) else []):
@@ -502,7 +506,7 @@ class TLDCRMClient:
             cache.save("calldispo", day, day, sig, counts)
         return counts, False
 
-    def dispo_breakdown(self, start, end, vendor_id=None):
+    def dispo_breakdown(self, start, end, vendor_id=None, direction="INBOUND"):
         """Disposition counts across a range, assembled day by day so finished days come
         from cache and only today is ever re-pulled. One count aggregate validates the whole
         range at the end — if it disagrees with our total, the cached days are dropped and
@@ -514,7 +518,7 @@ class TLDCRMClient:
 
         totals, cached_days = {}, 0
         with ThreadPoolExecutor(max_workers=6) as pool:      # days are independent
-            futs = {pool.submit(self._dispo_day, d, vendor_id): d for d in days}
+            futs = {pool.submit(self._dispo_day, d, vendor_id, direction): d for d in days}
             for fut in as_completed(futs):
                 try:
                     counts, was_cached = fut.result()
@@ -526,12 +530,13 @@ class TLDCRMClient:
 
         ours = sum(totals.values())
         try:                                                 # cheap, exact cross-check
-            theirs = self._dispo_count(start, end, vendor_id)
+            theirs = self._dispo_count(start, end, vendor_id, direction)
         except Exception:
             theirs = ours
         if theirs and abs(ours - theirs) > max(2, theirs * 0.01):
+            sig = f"v{vendor_id or 'all'}_{(direction or 'all').lower()}"
             for d in days:                                   # our days are wrong — rebuild
-                cache.drop("calldispo", d, d, f"v{vendor_id or 'all'}")
+                cache.drop("calldispo", d, d, sig)
             print(f"[dispo] {start}..{end}: counted {ours:,} but TLD says {theirs:,} — "
                   f"cache dropped, will rebuild", file=sys.stderr)
 

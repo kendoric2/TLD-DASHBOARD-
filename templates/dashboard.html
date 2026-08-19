@@ -98,7 +98,14 @@
       <div class="detail-summary" id="dispoSummary">
         Every call attempt and how it ended. Pulled a day at a time and saved, so the first look at a long range takes a moment and later ones are instant.
       </div>
-      <button class="btn dark" id="dispoLoad">Load dispositions</button>
+      <span class="detail-controls" style="margin-bottom:10px">
+        <select class="detail-agent" id="dispoDirection" style="min-width:200px" aria-label="Call direction">
+          <option value="INBOUND" selected>Inbound only (what you pay for)</option>
+          <option value="OUTBOUND">Outbound only (auto-dialer)</option>
+          <option value="ALL">All calls</option>
+        </select>
+        <button class="btn dark" id="dispoLoad">Load dispositions</button>
+      </span>
       <div class="table-scroll" id="dispoWrap" style="max-height:420px;margin-top:12px" hidden>
         <table>
           <thead><tr><th>Disposition</th><th class="num">Count</th><th class="num">Share</th><th>&nbsp;</th></tr></thead>
