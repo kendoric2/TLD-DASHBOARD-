@@ -28,6 +28,10 @@ import config
 import cache
 import metrics
 
+# The dialer's per-call log — the real source of call dispositions (TLD pointed us here).
+# Note the "tldialer/" namespace: bare endpoint names don't reach it.
+CALL_LOG = "tldialer/tldialer_call_log"
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as _f:
     PAYLOADS = json.load(_f)["queries"]
@@ -355,15 +359,15 @@ class TLDCRMClient:
 
     # ---------------------------------------------------------------- vendors tab ----
     def agent_dispo(self, start, end, agent):
-        """Disposition counts for ONE person from lead_logs (action='status').
+        """Call outcomes for ONE person, straight from the dialer's call log.
 
-        Filtering by user_full_name is exact and fast (verified: a filtered count matched a
-        locally counted one to the row), so no caching is needed — a busy agent is only
-        ~340 events/day.
+        agent_name filtering is honored, so this is a small direct query — no caching. Note
+        automated dialling is logged under its own pseudo-agent ("Outbound Auto Dial"), so a
+        real person's numbers only ever contain calls they actually handled.
 
-        NAME FORMATS DIFFER: policies say "Powers, Tony", lead_logs says "Tony Powers". We
-        try the converted form first, then the original. If both come back empty we say so
-        explicitly, so "no dispositions" can't be confused with a name that never matched."""
+        NAME FORMATS DIFFER: policies say "Powers, Tony", the call log says "Tony Powers".
+        We try the converted form first, then the original, and report which we searched —
+        so "no calls" can never be confused with a name that simply never matched."""
         if not agent:
             return {"dispositions": [], "total": 0, "searched": None}
 
@@ -372,17 +376,17 @@ class TLDCRMClient:
             if not name or name in tried:
                 continue
             tried.append(name)
-            body = {"columns": ["action_id", "lead_status_name", "user_full_name"],
-                    "action": "status", "user_full_name": name, "limit": 200000,
-                    "date_created": f"{start} 00:00:00", "date_created_end": f"{end} 23:59:59"}
-            resp = config.egress_get("lead_logs", body, timeout=max(self.timeout, 180))
+            body = {"columns": ["status_name", "agent_name", "sec_talk"],
+                    "agent_name": name, "limit": 200000,
+                    "call_date": f"{start} 00:00:00", "call_date_end": f"{end} 23:59:59"}
+            resp = config.egress_get(CALL_LOG, body, timeout=max(self.timeout, 240))
             rows = [r for r in (resp if isinstance(resp, list) else []) if isinstance(r, dict)]
             if rows:
                 break
 
         counts = {}
         for r in rows:
-            k = str(r.get("lead_status_name") or "(blank)")
+            k = str(r.get("status_name") or "(blank)")
             counts[k] = counts.get(k, 0) + 1
         out = [{"status": k, "count": v} for k, v in counts.items()]
         out.sort(key=lambda x: -x["count"])
@@ -461,38 +465,41 @@ class TLDCRMClient:
                 "conversion": round(sales / calls * 100, 1) if calls else 0}
 
     def _dispo_count(self, start, end, vendor_id=None):
-        """Fast COUNT of disposition events in a range. group_by is broken on this endpoint
-        (it collapses every status into one mislabelled bucket — see probe_dispo2.py), but
-        the tql_cnt total is exact, so we use it purely to validate cached day counts."""
-        body = {"aggregates": True, "aggregate": True, "columns": ["tql_cnt_action_id"],
-                "action": "status",
-                "date_created": f"{start} 00:00:00", "date_created_end": f"{end} 23:59:59"}
+        """Fast COUNT of calls in a range, used only to sanity-check cached day counts.
+        group_by is broken across TLD (it collapses everything into one mislabelled bucket —
+        see probe_dispo2.py), but plain tql_cnt totals have always been exact."""
+        body = {"aggregates": True, "aggregate": True, "columns": ["tql_cnt_call_log_id"],
+                "call_date": f"{start} 00:00:00", "call_date_end": f"{end} 23:59:59"}
         if vendor_id:
-            body["lead_vendor_id"] = vendor_id
-        resp = config.egress_get("lead_logs", body, timeout=max(self.timeout, 90))
+            body["vendor_id"] = vendor_id
+        resp = config.egress_get(CALL_LOG, body, timeout=max(self.timeout, 90))
         return _first_num(resp if isinstance(resp, list) else [])
 
     def _dispo_day(self, day, vendor_id=None):
-        """{disposition: count} for ONE day, from lead_logs rows where action='status'.
-        A finished day is cached permanently: lead_logs is an append-only event log, so a
-        past day's rows can't change (unlike policies, which get edited constantly)."""
+        """{call disposition: count} for ONE day from the dialer's call log.
+
+        These are real per-call outcomes (Answering Machine, Not Interested, Disconnected,
+        Sale Made…), which is what "dispositions" actually means — we previously used lead
+        STATUS changes as a stand-in before TLD pointed us at this endpoint.
+
+        A finished day is cached: a completed call's outcome doesn't change, and at ~33k
+        calls/day a month would otherwise be a million rows on every view."""
         sig = f"v{vendor_id or 'all'}"
-        hit = cache.load("dispo", day, day, sig)
+        hit = cache.load("calldispo", day, day, sig)
         if hit:
             return hit["rows"], True
-        body = {"columns": ["action_id", "lead_status_name"], "action": "status",
-                "date_created": f"{day} 00:00:00", "date_created_end": f"{day} 23:59:59",
-                "limit": 200000}
+        body = {"columns": ["status_name"], "limit": 200000,
+                "call_date": f"{day} 00:00:00", "call_date_end": f"{day} 23:59:59"}
         if vendor_id:
-            body["lead_vendor_id"] = vendor_id
-        rows = config.egress_get("lead_logs", body, timeout=max(self.timeout, 240))
+            body["vendor_id"] = vendor_id
+        rows = config.egress_get(CALL_LOG, body, timeout=max(self.timeout, 300))
         counts = {}
         for r in (rows if isinstance(rows, list) else []):
             if isinstance(r, dict):
-                k = str(r.get("lead_status_name") or "(blank)")
+                k = str(r.get("status_name") or "(blank)")
                 counts[k] = counts.get(k, 0) + 1
         if counts:
-            cache.save("dispo", day, day, sig, counts)
+            cache.save("calldispo", day, day, sig, counts)
         return counts, False
 
     def dispo_breakdown(self, start, end, vendor_id=None):
@@ -524,7 +531,7 @@ class TLDCRMClient:
             theirs = ours
         if theirs and abs(ours - theirs) > max(2, theirs * 0.01):
             for d in days:                                   # our days are wrong — rebuild
-                cache.drop("dispo", d, d, f"v{vendor_id or 'all'}")
+                cache.drop("calldispo", d, d, f"v{vendor_id or 'all'}")
             print(f"[dispo] {start}..{end}: counted {ours:,} but TLD says {theirs:,} — "
                   f"cache dropped, will rebuild", file=sys.stderr)
 
