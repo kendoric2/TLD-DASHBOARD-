@@ -892,10 +892,12 @@ async function loadBilled(){
       `<div class="kpi"><div class="label">${label}</div>
        <div class="value"${warn ? ' style="color:#E2574C"' : ""}>${val}</div>
        <div class="delta note">${note || ""}</div></div>`;
+    // "Converted" = a billed call whose LEAD produced a policy. It is NOT the day's total
+    // sales — a sale can come from a call you weren't billed for — so the label says so.
     $("#billedKpis").innerHTML =
         card("Billed Calls", (t.calls || 0).toLocaleString(), money(t.spend) + " total")
-      + card("Sales", (t.sales || 0).toLocaleString(),
-             t.sales ? money(t.cost_per_sale) + " per sale" : "no sales in this range")
+      + card("Billed calls that converted", (t.sales || 0).toLocaleString(),
+             t.sales ? money(t.cost_per_sale) + " per policy" : "none linked to a policy")
       + card("Paid but not answered", (t.dropped || 0).toLocaleString(),
              `${money(t.dropped_cost)} · ${t.dropped_pct}% of billed calls`, (t.dropped || 0) > 0);
     sum.innerHTML = `<b>${(t.calls || 0).toLocaleString()}</b> billed calls · <b>${money(t.spend)}</b>`
@@ -910,7 +912,7 @@ async function loadBilled(){
         <td${/no agent|not available|timeout|after hours|drop/i.test(r.status) ? ' style="color:#E2574C;font-weight:600"' : ""}>${r.status || ""}</td>
         <td class="num">${r.talk_sec ? Math.round(r.talk_sec) + "s" : '<span class="dash">—</span>'}</td>
         <td class="num">${money(r.cost)}</td>
-        <td title="${r.dialer_lead_id ? "dialer id " + r.dialer_lead_id : ""}">${r.lead_id || '<span class="dash">—</span>'}</td>
+        <td title="${r.dialer_lead_id ? "dialer id " + r.dialer_lead_id : ""}">${r.lead_id || '<span class="dash">—</span>'}${r.converted ? ' <span title="this lead produced a policy" style="color:#00A248;font-weight:700">✓</span>' : ""}</td>
       </tr>`).join("")
       : '<tr><td colspan="7" class="dash" style="padding:14px">No billed calls in this range.</td></tr>';
     $("#billedWrap").hidden = false;

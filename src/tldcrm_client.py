@@ -507,7 +507,22 @@ class TLDCRMClient:
         rows.sort(key=lambda x: x["call_date"], reverse=True)
 
         spend = sum(r["cost"] for r in rows)
-        sales = [r for r in rows if "sale" in r["status"].lower()]
+
+        # A billed call is NEVER itself dispositioned "Sale Made": you're billed on the
+        # inbound leg when it clears buffer time, while the sale lands on a later leg after
+        # transfer — different rows entirely (verified: the two sets never intersect).
+        # So attribute through the LEAD: did this call's lead produce a policy in the range?
+        sold_leads = set()
+        try:
+            pol, _ = self.cached_rows("policies_ids", start, end)
+            for p in _dedupe_rows(pol):
+                if p.get("lead_id"):
+                    sold_leads.add(str(p["lead_id"]).strip())
+        except Exception:
+            sold_leads = set()
+        for r in rows:
+            r["converted"] = bool(r["lead_id"]) and str(r["lead_id"]).strip() in sold_leads
+        sales = [r for r in rows if r["converted"]]
         dropped = [r for r in rows if _is_unhandled(r["status"])]
         by_status = {}
         for r in rows:
@@ -521,7 +536,8 @@ class TLDCRMClient:
             "rows": rows,
             "summary": {
                 "calls": len(rows), "spend": round(spend, 2),
-                "sales": len(sales),
+                "sales": len(sales),          # billed calls whose LEAD produced a policy
+                "unlinked": sum(1 for r in rows if not str(r["lead_id"] or "").strip()),
                 "cost_per_sale": round(spend / len(sales), 2) if sales else 0,
                 "dropped": len(dropped),
                 "dropped_cost": round(sum(r["cost"] for r in dropped), 2),
