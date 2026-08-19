@@ -934,6 +934,7 @@ async function loadDispo(){
     const total = dp.total || 0;
     const label = dir === "INBOUND" ? "inbound calls" : dir === "OUTBOUND" ? "outbound calls" : "calls";
     sum.innerHTML = `<b>${total.toLocaleString()}</b> ${label} over ${dp.days} day(s)`
+      + (dp.filtered_spam ? ` · <span class="dash">${dp.filtered_spam.toLocaleString()} robocalls excluded (caught by TLD's filter)</span>` : "")
       + (dp.cached_days ? ` · ${dp.cached_days} day(s) from saved data` : "");
     const max = Math.max(1, ...rows.map(r => r.count));
     $("#dispoRows").innerHTML = rows.map(r => `

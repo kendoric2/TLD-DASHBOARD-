@@ -557,17 +557,23 @@ class TLDCRMClient:
         hit = cache.load("calldispo", day, day, sig)
         if hit:
             return hit["rows"], True
-        body = {"columns": ["status_name", "status"], "limit": 200000,
+        body = {"columns": ["status_name", "status", "did_description"], "limit": 200000,
                 "call_date": f"{day} 00:00:00", "call_date_end": f"{day} 23:59:59"}
         if vendor_id:
             body["vendor_id"] = vendor_id
         if direction:
             body["call_direction"] = direction.upper()
         rows = config.egress_get(CALL_LOG, body, timeout=max(self.timeout, 300))
-        counts = {}
+        counts, filtered = {}, 0
         for r in (rows if isinstance(rows, list) else []):
-            if isinstance(r, dict):
-                counts[_dispo_label(r)] = counts.get(_dispo_label(r), 0) + 1
+            if not isinstance(r, dict):
+                continue
+            if _is_spam(r):                      # junk caught by TLD's filter — not a real call
+                filtered += 1
+                continue
+            counts[_dispo_label(r)] = counts.get(_dispo_label(r), 0) + 1
+        if filtered:
+            counts[SPAM_KEY] = filtered          # kept so the UI can report what it removed
         if counts:
             cache.save("calldispo", day, day, sig, counts)
         return counts, False
@@ -606,10 +612,12 @@ class TLDCRMClient:
             print(f"[dispo] {start}..{end}: counted {ours:,} but TLD says {theirs:,} — "
                   f"cache dropped, will rebuild", file=sys.stderr)
 
+        spam = totals.pop(SPAM_KEY, 0)          # excluded from the breakdown, reported below
         rows = [{"status": k, "count": v} for k, v in totals.items()]
         rows.sort(key=lambda x: -x["count"])
-        return {"dispositions": rows, "total": ours, "reported_total": theirs,
-                "days": len(days), "cached_days": cached_days}
+        real = sum(totals.values())
+        return {"dispositions": rows, "total": real, "reported_total": theirs,
+                "filtered_spam": spam, "days": len(days), "cached_days": cached_days}
 
     def _changed_count(self, start, end, since):
         """How many policies in this range have been modified since `since`
@@ -823,6 +831,17 @@ UNHANDLED_MARKERS = ("no agent", "agent not available", "queue timeout",
 
 
 NOT_DISPOSITIONED = "Not dispositioned (no agent)"
+
+# Robocall traffic that TLD's own filter intercepts. It is NOT vendor traffic and never
+# reaches an agent: on Sunday 2026-08-16 it was 96% of inbound, peaking 00:00-05:00, with
+# caller id 1111111111 alone appearing 802 times — zero talk time, zero billable, zero cost.
+# Counting it as a disposition made "no disposition" look like the biggest category.
+SPAM_DIDS = ("did system filter",)
+SPAM_KEY = "__filtered_spam__"
+
+
+def _is_spam(row):
+    return str(row.get("did_description") or "").strip().lower() in SPAM_DIDS
 
 
 def _dispo_label(row):
