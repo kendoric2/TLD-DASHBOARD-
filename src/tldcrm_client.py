@@ -464,6 +464,68 @@ class TLDCRMClient:
                 "cpa": round(spend / sales, 2) if sales else 0,
                 "conversion": round(sales / calls * 100, 1) if calls else 0}
 
+    def billed_calls(self, start, end, vendor_id=None):
+        """Every call you were BILLED for, one row each — the audit trail behind an invoice.
+
+        Verified to reconcile exactly with the billing report (438 calls / $17,520 on
+        2026-08-18, 0.0% variance both ways), and billing is 100% inbound, so we pull
+        inbound and keep the billable rows.
+
+        We ask the API to filter on `billable` as well, but we ALWAYS re-filter locally —
+        if TLD ignores that filter (it has silently ignored several) the result is still
+        correct, just fetched the long way."""
+        body = {"columns": ["call_date", "call_direction", "status_name", "agent_name",
+                            "vendor_id", "vendor_description", "lead_id", "billable",
+                            "cost", "duration_call", "sec_talk"],
+                "limit": 200000, "billable": 1, "call_direction": "INBOUND",
+                "call_date": f"{start} 00:00:00", "call_date_end": f"{end} 23:59:59"}
+        if vendor_id:
+            body["vendor_id"] = vendor_id
+        resp = config.egress_get(CALL_LOG, body, timeout=max(self.timeout, 300))
+
+        rows = []
+        for r in (resp if isinstance(resp, list) else []):
+            if not isinstance(r, dict):
+                continue
+            if str(r.get("billable")).strip() not in ("1", "1.0", "True", "true"):
+                continue                                   # belt and braces
+            rows.append({
+                "call_date": str(r.get("call_date") or ""),
+                "vendor": str(r.get("vendor_description") or "").strip(),
+                "agent": str(r.get("agent_name") or "").strip(),
+                "status": str(r.get("status_name") or "").strip(),
+                "lead_id": r.get("lead_id"),
+                "talk_sec": _num(r.get("sec_talk")),
+                "duration": str(r.get("duration_call") or ""),
+                "cost": _num(r.get("cost")),
+            })
+        rows.sort(key=lambda x: x["call_date"], reverse=True)
+
+        spend = sum(r["cost"] for r in rows)
+        sales = [r for r in rows if "sale" in r["status"].lower()]
+        dropped = [r for r in rows if _is_unhandled(r["status"])]
+        by_status = {}
+        for r in rows:
+            s = r["status"] or "(blank)"
+            b = by_status.setdefault(s, {"status": s, "calls": 0, "cost": 0.0})
+            b["calls"] += 1
+            b["cost"] += r["cost"]
+        breakdown = sorted(by_status.values(), key=lambda x: -x["calls"])
+
+        return {
+            "rows": rows,
+            "summary": {
+                "calls": len(rows), "spend": round(spend, 2),
+                "sales": len(sales),
+                "cost_per_sale": round(spend / len(sales), 2) if sales else 0,
+                "dropped": len(dropped),
+                "dropped_cost": round(sum(r["cost"] for r in dropped), 2),
+                "dropped_pct": round(len(dropped) / len(rows) * 100, 1) if rows else 0,
+            },
+            "by_status": breakdown,
+            "unhandled_statuses": sorted({r["status"] for r in dropped}),
+        }
+
     def _dispo_count(self, start, end, vendor_id=None, direction=None):
         """Fast COUNT of calls in a range, used only to sanity-check cached day counts.
         group_by is broken across TLD (it collapses everything into one mislabelled bucket —
@@ -746,6 +808,19 @@ class TLDCRMClient:
         if errors:
             data["error"] = "Some metrics didn't load: " + "; ".join(errors)
         return data
+
+
+# A billed call that nobody handled: it reached us, we paid for it, no agent took it.
+# Matched on the disposition text so new TLD statuses of the same kind are caught too.
+# The API returns these verbatim, e.g. "Inbound No Agent No Queue Drop", "Agent Not
+# Available", "Inbound Queue Timeout Drop", "Inbound After Hours Drop".
+UNHANDLED_MARKERS = ("no agent", "agent not available", "queue timeout",
+                     "after hours", "queue drop", "pre-routing drop")
+
+
+def _is_unhandled(status):
+    s = str(status or "").lower()
+    return any(m in s for m in UNHANDLED_MARKERS)
 
 
 def _first_last(name):

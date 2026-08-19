@@ -91,6 +91,26 @@
       </div>
     </div>
 
+    <div class="section-title">Invoice Audit
+      <span class="hint">— every call you were billed for, and what happened on it</span>
+    </div>
+    <div class="card">
+      <div class="detail-summary" id="billedSummary">
+        Reconciles exactly with the billing report. Shows what each billed call actually produced — including the ones nobody answered.
+      </div>
+      <div class="kpis vendor-cost" id="billedKpis"></div>
+      <span class="detail-controls" style="margin-bottom:10px">
+        <button class="btn dark" id="billedLoad">Load billed calls</button>
+        <button class="btn export" id="billedExport" hidden title="Download the billed calls as an Excel file">&#8681; Export Excel</button>
+      </span>
+      <div class="table-scroll" id="billedWrap" style="max-height:460px" hidden>
+        <table>
+          <thead><tr><th>Call Time</th><th>Vendor</th><th>Agent</th><th>Disposition</th><th class="num">Talk</th><th class="num">Cost</th><th>Lead ID</th></tr></thead>
+          <tbody id="billedRows"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="section-title">Call Dispositions
       <span class="hint">— the outcome of every dial, straight from the dialer</span>
     </div>

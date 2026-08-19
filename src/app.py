@@ -206,8 +206,10 @@ def api_vendors():
                    if request.args.get("dispo") else None)
         f_cost = (pool.submit(client.vendor_cost, start, end, vendor)
                   if request.args.get("cost") else None)
-        for key, fut in (("vendors", f_cat), ("leads", f_leads),
-                         ("dispo", f_dispo), ("cost", f_cost)):
+        f_billed = (pool.submit(client.billed_calls, start, end, vendor)
+                    if request.args.get("billed") else None)
+        for key, fut in (("vendors", f_cat), ("leads", f_leads), ("dispo", f_dispo),
+                         ("cost", f_cost), ("billed", f_billed)):
             if fut is None:
                 data[key] = None
                 continue
@@ -217,6 +219,37 @@ def api_vendors():
                 data[key] = None
                 data.setdefault("errors", []).append(f"{key}: {e}")
     return jsonify(data)
+
+
+@app.route("/api/vendors/billed/export")
+def api_billed_export():
+    """Download the billed calls for a range as .xlsx — the audit trail for an invoice."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    client = _client()
+    if client is None:
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to export."}), 400
+    try:
+        import export_xlsx
+        vendor = (request.args.get("vendor_id") or "").strip() or None
+        data = client.billed_calls(start, end, vendor)
+        name = "all vendors"
+        if vendor:
+            for v in client.vendor_catalogue():
+                if str(v["vendor_id"]) == str(vendor):
+                    name = v["name"]
+                    break
+        buf, fname = export_xlsx.build_billed(start, end, name,
+                                              data.get("summary") or {}, data.get("rows") or [])
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        return jsonify({"error": "Excel export needs openpyxl: pip install -r requirements.txt"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
 
 
 @app.route("/api/agent_detail/export")

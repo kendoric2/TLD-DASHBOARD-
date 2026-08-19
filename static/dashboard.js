@@ -874,6 +874,50 @@ function fillVendorPicker(catalogue, leads){
     + (rest.length ? `<optgroup label="No activity in this range">${rest.map(opt).join("")}</optgroup>` : "");
   sel.value = cur;
 }
+// Invoice audit — the calls you were billed for, and what each one produced. The headline
+// is money spent on calls nobody answered, which is invisible in any report total.
+async function loadBilled(){
+  const {s, e, v} = vendorRange();
+  const sum = $("#billedSummary");
+  if (!s || !e){ sum.textContent = "Pick a start and end date first."; return; }
+  sum.textContent = "Loading billed calls…";
+  try {
+    const qs = `range=custom&start=${s}&end=${e}&billed=1` + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
+    const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
+    const b = d.billed;
+    if (!b){ sum.textContent = "Could not load billed calls."; return; }
+    const t = b.summary || {};
+    const money = n => "$" + Number(n || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    const card = (label, val, note, warn) =>
+      `<div class="kpi"><div class="label">${label}</div>
+       <div class="value"${warn ? ' style="color:#E2574C"' : ""}>${val}</div>
+       <div class="delta note">${note || ""}</div></div>`;
+    $("#billedKpis").innerHTML =
+        card("Billed Calls", (t.calls || 0).toLocaleString(), money(t.spend) + " total")
+      + card("Sales", (t.sales || 0).toLocaleString(),
+             t.sales ? money(t.cost_per_sale) + " per sale" : "no sales in this range")
+      + card("Paid but not answered", (t.dropped || 0).toLocaleString(),
+             `${money(t.dropped_cost)} · ${t.dropped_pct}% of billed calls`, (t.dropped || 0) > 0);
+    sum.innerHTML = `<b>${(t.calls || 0).toLocaleString()}</b> billed calls · <b>${money(t.spend)}</b>`
+      + (b.unhandled_statuses && b.unhandled_statuses.length
+          ? ` <span class="dash">(counted as unanswered: ${b.unhandled_statuses.join(", ")})</span>` : "");
+    const rows = b.rows || [];
+    $("#billedRows").innerHTML = rows.length ? rows.slice(0, 3000).map(r => `
+      <tr>
+        <td>${(r.call_date || "").replace("T", " ")}</td>
+        <td>${r.vendor || ""}</td>
+        <td>${r.agent || '<span class="dash">—</span>'}</td>
+        <td${/no agent|not available|timeout|after hours|drop/i.test(r.status) ? ' style="color:#E2574C;font-weight:600"' : ""}>${r.status || ""}</td>
+        <td class="num">${r.talk_sec ? Math.round(r.talk_sec) + "s" : '<span class="dash">—</span>'}</td>
+        <td class="num">${money(r.cost)}</td>
+        <td>${r.lead_id ?? ""}</td>
+      </tr>`).join("")
+      : '<tr><td colspan="7" class="dash" style="padding:14px">No billed calls in this range.</td></tr>';
+    $("#billedWrap").hidden = false;
+    $("#billedExport").hidden = !rows.length;
+  } catch (err){ sum.textContent = "Could not load billed calls."; }
+}
+
 async function loadDispo(){
   const {s, e, v} = vendorRange();
   const sum = $("#dispoSummary");
@@ -1038,6 +1082,12 @@ $("#tabDetail").addEventListener("click", () => showTab("detail"));
 $("#tabVendors").addEventListener("click", () => showTab("vendors"));
 $("#vendorApply").addEventListener("click", loadVendors);
 $("#vendorPick").addEventListener("change", loadVendors);
+$("#billedLoad").addEventListener("click", loadBilled);
+$("#billedExport").addEventListener("click", () => {
+  const {s, e, v} = vendorRange();
+  window.location = `/api/vendors/billed/export?range=custom&start=${s}&end=${e}`
+    + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
+});
 $("#dispoLoad").addEventListener("click", loadDispo);
 $("#dispoDirection").addEventListener("change", () => { if (!$("#dispoWrap").hidden) loadDispo(); });
 ["vendorStart","vendorEnd"].forEach(id => { const el = $("#"+id);

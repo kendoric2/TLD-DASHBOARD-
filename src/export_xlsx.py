@@ -50,6 +50,57 @@ def _sheet_title(agent):
     return (t[:31] or "Agent Detail")
 
 
+BILLED_COLUMNS = [
+    ("Call Time",   "call_date"),
+    ("Vendor",      "vendor"),
+    ("Agent",       "agent"),
+    ("Disposition", "status"),
+    ("Talk (sec)",  "talk_sec"),
+    ("Cost",        "cost"),
+    ("Lead ID",     "lead_id"),
+]
+
+
+def build_billed(start, end, vendor_label, summary, rows):
+    """Invoice audit: the calls billed in a range, one per row, for checking against a
+    vendor's bill. Header names the vendor and range, then the totals, then the calls."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _sheet_title(vendor_label or "Billed Calls")
+
+    s = summary or {}
+    ws.append([f"Billed calls: {vendor_label or 'all vendors'}"])
+    ws.append([f"Range: {start} to {end}"])
+    ws.append([f"{s.get('calls', 0)} calls  ·  ${s.get('spend', 0):,.2f} total  ·  "
+               f"{s.get('sales', 0)} sales  ·  "
+               f"{s.get('dropped', 0)} unanswered (${s.get('dropped_cost', 0):,.2f})"])
+    ws.append([])
+    ws.append([h for h, _k in BILLED_COLUMNS])
+
+    for row in rows:
+        line = []
+        for _h, key in BILLED_COLUMNS:
+            val = row.get(key)
+            val = "" if val is None else val
+            if key in ("cost", "talk_sec") and str(val).strip():
+                try:
+                    val = float(val)
+                except (TypeError, ValueError):
+                    pass
+            if key == "lead_id" and str(val).strip():
+                try:
+                    val = int(str(val))
+                except (TypeError, ValueError):
+                    pass
+            line.append(val)
+        ws.append(line)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf, f"BilledCalls_{safe_name(vendor_label or 'all')}_{start}_{end}.xlsx"
+
+
 def build(agent, start, end, range_label, summary, rows):
     """Return (BytesIO, filename): who it's for, then the header row and their deals."""
     wb = Workbook()
