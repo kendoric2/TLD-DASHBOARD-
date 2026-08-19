@@ -522,7 +522,11 @@ class TLDCRMClient:
             sold_leads = set()
         for r in rows:
             r["converted"] = bool(r["lead_id"]) and str(r["lead_id"]).strip() in sold_leads
-        sales = [r for r in rows if r["converted"]]
+        # Count DISTINCT LEADS, not calls: if someone rings twice and buys once that's one
+        # conversion, so conversions can never exceed policies actually sold. (You still
+        # paid for both calls — the spend side is unaffected.)
+        converted_leads = {str(r["lead_id"]).strip() for r in rows if r["converted"]}
+        sales = converted_leads
         dropped = [r for r in rows if _is_unhandled(r["status"])]
         by_status = {}
         for r in rows:
@@ -536,7 +540,8 @@ class TLDCRMClient:
             "rows": rows,
             "summary": {
                 "calls": len(rows), "spend": round(spend, 2),
-                "sales": len(sales),          # billed calls whose LEAD produced a policy
+                "sales": len(sales),          # distinct leads from billed calls that bought
+                "converted_calls": sum(1 for r in rows if r["converted"]),
                 "unlinked": sum(1 for r in rows if not str(r["lead_id"] or "").strip()),
                 "cost_per_sale": round(spend / len(sales), 2) if sales else 0,
                 "dropped": len(dropped),

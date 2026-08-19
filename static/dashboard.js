@@ -896,8 +896,11 @@ async function loadBilled(){
     // sales — a sale can come from a call you weren't billed for — so the label says so.
     $("#billedKpis").innerHTML =
         card("Billed Calls", (t.calls || 0).toLocaleString(), money(t.spend) + " total")
-      + card("Billed calls that converted", (t.sales || 0).toLocaleString(),
-             t.sales ? money(t.cost_per_sale) + " per policy" : "none linked to a policy")
+      + card("Converted", (t.sales || 0).toLocaleString(),
+             t.sales
+               ? money(t.cost_per_sale) + " per policy"
+                 + (t.converted_calls > t.sales ? ` · from ${t.converted_calls} billed calls` : "")
+               : "none linked to a policy")
       + card("Paid but not answered", (t.dropped || 0).toLocaleString(),
              `${money(t.dropped_cost)} · ${t.dropped_pct}% of billed calls`, (t.dropped || 0) > 0);
     sum.innerHTML = `<b>${(t.calls || 0).toLocaleString()}</b> billed calls · <b>${money(t.spend)}</b>`
