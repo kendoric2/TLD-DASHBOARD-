@@ -945,6 +945,7 @@ async function loadDispo(){
         <td><div class="bar-track" style="min-width:120px"><div class="bar-fill" style="width:${(r.count / max * 100).toFixed(0)}%"></div></div></td>
       </tr>`).join("");
     $("#dispoWrap").hidden = false;
+    $("#dispoExport").hidden = !rows.length;
   } catch (err){ sum.textContent = "Could not load dispositions."; }
 }
 
@@ -1054,6 +1055,7 @@ async function loadAgentDispo(){
         <td><div class="bar-track" style="min-width:120px"><div class="bar-fill" style="width:${(r.count / max * 100).toFixed(0)}%"></div></div></td>
       </tr>`).join("");
     $("#agentDispoWrap").hidden = false;
+    $("#agentDispoExport").hidden = false;
   } catch (err){ sum.textContent = "Could not load dispositions."; }
 }
 
@@ -1091,6 +1093,19 @@ $("#billedExport").addEventListener("click", () => {
 });
 $("#dispoLoad").addEventListener("click", loadDispo);
 $("#dispoDirection").addEventListener("change", () => { if (!$("#dispoWrap").hidden) loadDispo(); });
+$("#dispoExport").addEventListener("click", () => {
+  const {s, e, v} = vendorRange();
+  const dir = $("#dispoDirection").value;
+  window.location = `/api/vendors/dispo/export?range=custom&start=${s}&end=${e}&direction=${dir}`
+    + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
+});
+$("#agentDispoExport").addEventListener("click", () => {
+  const who = $("#detailAgent").value;
+  const s = pickerISO("detailStart"), e = pickerISO("detailEnd");
+  if (!who) return;
+  window.location = `/api/agent_detail/dispo/export?range=custom&start=${s}&end=${e}`
+    + `&agent=${encodeURIComponent(who)}`;
+});
 ["vendorStart","vendorEnd"].forEach(id => { const el = $("#"+id);
   if (el) el.addEventListener("keydown", ev => { if (ev.key === "Enter") loadVendors(); }); });
 $("#detailApply").addEventListener("click", () => loadDetail());

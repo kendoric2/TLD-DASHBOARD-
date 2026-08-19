@@ -62,6 +62,37 @@ BILLED_COLUMNS = [
 ]
 
 
+def build_dispo(title, notes, rows, total, tab_name="Call Dispositions"):
+    """Call dispositions as a plain sheet: what it covers, then Disposition / Count / Share.
+
+    `notes` are the context lines that make the numbers interpretable later — the range, the
+    direction, and how many robocalls were excluded. Without those, a share column is
+    meaningless six months from now."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _sheet_title(tab_name)
+
+    ws.append([title])
+    for n in notes or []:
+        ws.append([n])
+    ws.append([])
+    ws.append(["Disposition", "Count", "Share"])
+
+    for r in rows:
+        count = r.get("count") or 0
+        ws.append([r.get("status") or "",
+                   count,
+                   round(count / total * 100, 1) if total else 0])
+    if rows:
+        ws.append([])
+        ws.append(["TOTAL", total, 100.0 if total else 0])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
 def build_billed(start, end, vendor_label, summary, rows):
     """Invoice audit: the calls billed in a range, one per row, for checking against a
     vendor's bill. Header names the vendor and range, then the totals, then the calls."""

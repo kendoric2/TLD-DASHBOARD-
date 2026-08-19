@@ -125,6 +125,7 @@
           <option value="ALL">All calls</option>
         </select>
         <button class="btn dark" id="dispoLoad">Load dispositions</button>
+        <button class="btn export" id="dispoExport" hidden title="Download this breakdown as an Excel file">&#8681; Export Excel</button>
       </span>
       <div class="table-scroll" id="dispoWrap" style="max-height:420px;margin-top:12px" hidden>
         <table>
@@ -176,7 +177,10 @@
     </div>
     <div class="card">
       <div class="detail-summary" id="agentDispoSummary">Pick a person above, then load their call outcomes for the dates shown.</div>
-      <button class="btn dark" id="agentDispoLoad">Load dispositions</button>
+      <span class="detail-controls" style="margin-bottom:0">
+        <button class="btn dark" id="agentDispoLoad">Load dispositions</button>
+        <button class="btn export" id="agentDispoExport" hidden title="Download this person's call outcomes as an Excel file">&#8681; Export Excel</button>
+      </span>
       <div class="table-scroll" id="agentDispoWrap" style="max-height:420px;margin-top:12px" hidden>
         <table>
           <thead><tr><th>Disposition</th><th class="num">Count</th><th class="num">Share</th><th>&nbsp;</th></tr></thead>

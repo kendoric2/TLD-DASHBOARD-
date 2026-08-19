@@ -221,6 +221,79 @@ def api_vendors():
     return jsonify(data)
 
 
+@app.route("/api/vendors/dispo/export")
+def api_vendor_dispo_export():
+    """Download the call-disposition breakdown for a vendor/range as .xlsx."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    client = _client()
+    if client is None:
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to export."}), 400
+    try:
+        import export_xlsx
+        vendor = (request.args.get("vendor_id") or "").strip() or None
+        direction = (request.args.get("direction") or "INBOUND").upper()
+        d = client.dispo_breakdown(start, end, vendor, None if direction == "ALL" else direction)
+
+        name = "All vendors"
+        if vendor:
+            for v in client.vendor_catalogue():
+                if str(v["vendor_id"]) == str(vendor):
+                    name = v["name"]
+                    break
+        dir_label = {"INBOUND": "Inbound only", "OUTBOUND": "Outbound only"}.get(direction, "All calls")
+        notes = [f"Range: {start} to {end}",
+                 f"Direction: {dir_label}",
+                 f"Total calls: {d.get('total', 0):,}"]
+        if d.get("filtered_spam"):
+            notes.append(f"Excluded: {d['filtered_spam']:,} robocalls caught by TLD's DID filter")
+        buf = export_xlsx.build_dispo(f"Call dispositions — {name}", notes,
+                                      d.get("dispositions") or [], d.get("total") or 0,
+                                      tab_name=name)
+        fname = f"CallDispositions_{export_xlsx.safe_name(name)}_{start}_{end}.xlsx"
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        return jsonify({"error": "Excel export needs openpyxl: pip install -r requirements.txt"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
+
+
+@app.route("/api/agent_detail/dispo/export")
+def api_agent_dispo_export():
+    """Download one person's call dispositions as .xlsx."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    agent = (request.args.get("agent") or "").strip()
+    if not agent:
+        return jsonify({"error": "Choose a person before exporting."}), 400
+    client = _client()
+    if client is None:
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to export."}), 400
+    try:
+        import export_xlsx
+        d = client.agent_dispo(start, end, agent)
+        notes = [f"Range: {start} to {end}",
+                 f"Total calls: {d.get('total', 0):,}",
+                 "Automated dialling is logged separately, so these are calls this person handled."]
+        buf = export_xlsx.build_dispo(f"Call dispositions — {agent}", notes,
+                                      d.get("dispositions") or [], d.get("total") or 0,
+                                      tab_name=agent)
+        fname = f"CallDispositions_{export_xlsx.safe_name(agent)}_{start}_{end}.xlsx"
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        return jsonify({"error": "Excel export needs openpyxl: pip install -r requirements.txt"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
+
+
 @app.route("/api/vendors/billed/export")
 def api_billed_export():
     """Download the billed calls for a range as .xlsx — the audit trail for an invoice."""
