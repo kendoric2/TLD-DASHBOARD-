@@ -376,7 +376,7 @@ class TLDCRMClient:
             if not name or name in tried:
                 continue
             tried.append(name)
-            body = {"columns": ["status_name", "agent_name", "sec_talk"],
+            body = {"columns": ["status_name", "status", "agent_name", "sec_talk"],
                     "agent_name": name, "limit": 200000,
                     "call_date": f"{start} 00:00:00", "call_date_end": f"{end} 23:59:59"}
             resp = config.egress_get(CALL_LOG, body, timeout=max(self.timeout, 240))
@@ -386,7 +386,7 @@ class TLDCRMClient:
 
         counts = {}
         for r in rows:
-            k = str(r.get("status_name") or "(blank)")
+            k = _dispo_label(r)
             counts[k] = counts.get(k, 0) + 1
         out = [{"status": k, "count": v} for k, v in counts.items()]
         out.sort(key=lambda x: -x["count"])
@@ -557,7 +557,7 @@ class TLDCRMClient:
         hit = cache.load("calldispo", day, day, sig)
         if hit:
             return hit["rows"], True
-        body = {"columns": ["status_name"], "limit": 200000,
+        body = {"columns": ["status_name", "status"], "limit": 200000,
                 "call_date": f"{day} 00:00:00", "call_date_end": f"{day} 23:59:59"}
         if vendor_id:
             body["vendor_id"] = vendor_id
@@ -567,8 +567,7 @@ class TLDCRMClient:
         counts = {}
         for r in (rows if isinstance(rows, list) else []):
             if isinstance(r, dict):
-                k = str(r.get("status_name") or "(blank)")
-                counts[k] = counts.get(k, 0) + 1
+                counts[_dispo_label(r)] = counts.get(_dispo_label(r), 0) + 1
         if counts:
             cache.save("calldispo", day, day, sig, counts)
         return counts, False
@@ -821,6 +820,24 @@ class TLDCRMClient:
 # Available", "Inbound Queue Timeout Drop", "Inbound After Hours Drop".
 UNHANDLED_MARKERS = ("no agent", "agent not available", "queue timeout",
                      "after hours", "queue drop", "pre-routing drop")
+
+
+NOT_DISPOSITIONED = "Not dispositioned (no agent)"
+
+
+def _dispo_label(row):
+    """Readable disposition for a call row.
+
+    A blank status_name isn't missing data — it's a call that arrived and was never
+    dispositioned because no agent took it. Confirmed: those rows have no agent, no talk
+    time and are never billable, and they spike to 97% on a Sunday when nobody is working
+    (11-14% on working days). Calling that "(blank)" makes it look like a bug, so we name
+    it. A few rows carry a raw code with no name mapping (e.g. WAITTO) — show the code."""
+    name = str(row.get("status_name") or "").strip()
+    if name:
+        return name
+    code = str(row.get("status") or "").strip()
+    return code if code else NOT_DISPOSITIONED
 
 
 def _is_unhandled(status):
