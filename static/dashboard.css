@@ -215,9 +215,9 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line)}
 th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;user-select:none}
-th[data-sort],th[data-bsort],th[data-dsort]{cursor:pointer}
-th[data-sort]:hover,th[data-bsort]:hover,th[data-dsort]:hover{color:var(--brand)}
-th[data-bsort].sorted,th[data-dsort].sorted{color:var(--brand-dark)}
+th[data-sort],th[data-bsort],th[data-dsort],th[data-isort]{cursor:pointer}
+th[data-sort]:hover,th[data-bsort]:hover,th[data-dsort]:hover,th[data-isort]:hover{color:var(--brand)}
+th[data-bsort].sorted,th[data-dsort].sorted,th[data-isort].sorted{color:var(--brand-dark)}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 tbody tr:hover{background:#F7FAFD}
 .rank{display:inline-flex;width:22px;height:22px;border-radius:50%;

@@ -17,6 +17,8 @@ let stateByAbbr = {};        // state abbr -> its breakdown, for click-through
 let selectedActiveCarrier = null;  // carrier row selected in the Active Policies tile
 let activeByCarrier = {};          // carrier -> its active breakdown (incl states)
 let activeCombined = null;         // aggregate active-by-state across all carriers (default view)
+let lastBilledRows = [];           // Invoice-audit rows, kept so sorting never refetches
+let billedSortKey = "call_date", billedSortDir = -1;   // newest call first by default
 let lastDetailRows = [];           // Agent Detail rows, kept so sorting never refetches
 let detailSortKey = "date_sold", detailSortDir = -1;   // newest first by default
 let selectedEnroller = null;       // enroller row selected in the Enrollments tile
@@ -906,8 +908,42 @@ async function loadBilled(){
     sum.innerHTML = `<b>${(t.calls || 0).toLocaleString()}</b> billed calls · <b>${money(t.spend)}</b>`
       + (b.unhandled_statuses && b.unhandled_statuses.length
           ? ` <span class="dash">(counted as unanswered: ${b.unhandled_statuses.join(", ")})</span>` : "");
-    const rows = b.rows || [];
-    $("#billedRows").innerHTML = rows.length ? rows.slice(0, 3000).map(r => `
+    lastBilledRows = b.rows || [];
+    renderBilledRows();
+    $("#billedWrap").hidden = false;
+    $("#billedExport").hidden = !lastBilledRows.length;
+  } catch (err){ sum.textContent = "Could not load billed calls."; }
+}
+
+/* Invoice-audit sorting — click a column, click again to reverse. Text goes A→Z first,
+   numbers and dates high/newest first. Blanks sink to the bottom, so sorting by Agent
+   groups the real names together instead of burying them under unanswered calls.
+   Uses data-isort so it can't collide with the other three sortable tables. */
+function sortBilledRows(rows){
+  const k = billedSortKey, dir = billedSortDir;
+  const numeric = (k === "talk_sec" || k === "cost");
+  return [...(rows || [])].sort((a, b) => {
+    const x = a[k], y = b[k];
+    const xb = x === "" || x == null, yb = y === "" || y == null;
+    if (xb !== yb) return xb ? 1 : -1;                 // blanks last, either direction
+    if (xb && yb) return 0;
+    if (numeric) return dir * ((Number(x) || 0) - (Number(y) || 0));
+    return dir * String(x).localeCompare(String(y));
+  });
+}
+function updateBilledSortArrows(){
+  document.querySelectorAll("th[data-isort]").forEach(th => {
+    if (!th.dataset.label) th.dataset.label = th.textContent.trim();
+    const active = th.getAttribute("data-isort") === billedSortKey;
+    th.classList.toggle("sorted", active);
+    th.textContent = th.dataset.label + (active ? (billedSortDir === 1 ? " ▲" : " ▼") : "");
+  });
+}
+function renderBilledRows(){
+  updateBilledSortArrows();
+  const money = n => "$" + Number(n || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+  const rows = sortBilledRows(lastBilledRows);
+  $("#billedRows").innerHTML = rows.length ? rows.slice(0, 3000).map(r => `
       <tr>
         <td>${(r.call_date || "").replace("T", " ")}</td>
         <td>${r.vendor || ""}</td>
@@ -917,11 +953,16 @@ async function loadBilled(){
         <td class="num">${money(r.cost)}</td>
         <td title="${r.dialer_lead_id ? "dialer id " + r.dialer_lead_id : ""}">${r.lead_id || '<span class="dash">—</span>'}${r.converted ? ' <span title="this lead produced a policy" style="color:#00A248;font-weight:700">✓</span>' : ""}</td>
       </tr>`).join("")
-      : '<tr><td colspan="7" class="dash" style="padding:14px">No billed calls in this range.</td></tr>';
-    $("#billedWrap").hidden = false;
-    $("#billedExport").hidden = !rows.length;
-  } catch (err){ sum.textContent = "Could not load billed calls."; }
+    : '<tr><td colspan="7" class="dash" style="padding:14px">No billed calls in this range.</td></tr>';
 }
+document.querySelectorAll("th[data-isort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.getAttribute("data-isort");
+    if (billedSortKey === k) billedSortDir *= -1;                        // same column -> flip
+    else { billedSortKey = k; billedSortDir = (k === "call_date" || k === "talk_sec" || k === "cost") ? -1 : 1; }
+    renderBilledRows();
+  });
+});
 
 async function loadDispo(){
   const {s, e, v} = vendorRange();
