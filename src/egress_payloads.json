@@ -40,7 +40,7 @@
     "policy_detail": {
       "endpoint": "policies",
       "date_bounded": true,
-      "payload": { "columns": ["policy_id", "lead_id", "date_sold", "agent_name", "fronter_name", "carrier_name", "product_plan_name", "product_name", "status_name", "stage"], "limit": 200000 }
+      "payload": { "columns": ["policy_id", "lead_id", "date_sold", "agent_name", "fronter_name", "carrier_name", "product_plan_name", "product_name", "status_name", "stage", "lead_state"], "limit": 200000 }
     },
 
     "recent_sales": {

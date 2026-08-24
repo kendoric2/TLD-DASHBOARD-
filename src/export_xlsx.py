@@ -16,6 +16,7 @@ COLUMNS = [
     ("Role",      "role"),
     ("Agent",     "agent"),
     ("Enroller",  "enroller"),
+    ("State",     "state"),
     ("Carrier",   "carrier"),
     ("Plan",      "plan"),
     ("SEP",       "sep"),

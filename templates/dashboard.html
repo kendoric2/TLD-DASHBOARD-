@@ -165,9 +165,21 @@
       <div class="table-scroll" style="max-height:560px">
         <table>
           <thead>
-            <tr><th data-dsort="date_sold">Date Sold</th><th data-dsort="lead_id">Lead ID</th><th data-dsort="role">Role</th><th data-dsort="agent">Agent</th><th data-dsort="enroller">Enroller</th><th data-dsort="carrier">Carrier</th><th data-dsort="plan">Plan</th><th data-dsort="sep">SEP</th></tr>
+            <tr><th data-dsort="date_sold">Date Sold</th><th data-dsort="lead_id">Lead ID</th><th data-dsort="role">Role</th><th data-dsort="agent">Agent</th><th data-dsort="enroller">Enroller</th><th data-dsort="state">State</th><th data-dsort="carrier">Carrier</th><th data-dsort="plan">Plan</th><th data-dsort="sep">SEP</th></tr>
           </thead>
           <tbody id="detailRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-title">By State
+      <span class="hint">— where this person closes and enrolls the most</span>
+    </div>
+    <div class="card">
+      <div class="table-scroll" style="max-height:320px">
+        <table>
+          <thead><tr><th>State</th><th class="num">Closed</th><th class="num">Enrolled</th><th class="num">Total</th><th class="num">Share</th><th>&nbsp;</th></tr></thead>
+          <tbody id="detailStates"></tbody>
         </table>
       </div>
     </div>

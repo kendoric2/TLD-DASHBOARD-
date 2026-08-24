@@ -1016,6 +1016,7 @@ async function loadDetail(agent){
     sum.innerHTML = `<b>${who}</b> · closed <b>${t.closed || 0}</b> · enrolled <b>${t.enrolled || 0}</b> · total <b>${t.total || 0}</b>`;
     lastDetailRows = d.rows || [];
     renderDetailRows();
+    renderDetailStates(d.by_state || [], t.total || 0);
   } catch (err) {
     sum.textContent = "Could not load the agent detail.";
   }
@@ -1053,11 +1054,30 @@ function renderDetailRows(){
         <td><span class="pill-role ${r.role}">${r.role}</span></td>
         <td>${r.agent || '<span class="dash">—</span>'}</td>
         <td>${r.enroller || '<span class="dash">—</span>'}</td>
+        <td>${r.state || '<span class="dash">—</span>'}</td>
         <td>${r.carrier || ""}</td>
         <td>${r.plan || '<span class="dash">—</span>'}</td>
         <td class="sep-tag">${r.sep || '<span class="dash">—</span>'}</td>
       </tr>`).join("")
-    : '<tr><td colspan="8" class="dash" style="padding:14px">No deals for this person in this range.</td></tr>';
+    : '<tr><td colspan="9" class="dash" style="padding:14px">No deals for this person in this range.</td></tr>';
+}
+
+// Where this person's business comes from. Split by role because someone can close in one
+// set of states and enrol in another — a blended total would hide that.
+function renderDetailStates(states, total){
+  const el = $("#detailStates");
+  if (!el) return;
+  const max = Math.max(1, ...states.map(s => s.total || 0));
+  el.innerHTML = states.length ? states.map(s => `
+    <tr>
+      <td>${s.state}</td>
+      <td class="num">${(s.closed || 0).toLocaleString()}</td>
+      <td class="num">${(s.enrolled || 0).toLocaleString()}</td>
+      <td class="num"><b>${(s.total || 0).toLocaleString()}</b></td>
+      <td class="num">${total ? (s.total / total * 100).toFixed(1) + "%" : "—"}</td>
+      <td><div class="bar-track" style="min-width:110px"><div class="bar-fill" style="width:${(s.total / max * 100).toFixed(0)}%"></div></div></td>
+    </tr>`).join("")
+    : '<tr><td colspan="6" class="dash" style="padding:14px">Pick a person to see where their deals come from.</td></tr>';
 }
 document.querySelectorAll("th[data-dsort]").forEach(th => {
   th.addEventListener("click", () => {

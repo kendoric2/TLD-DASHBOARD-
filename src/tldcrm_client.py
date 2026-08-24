@@ -747,6 +747,7 @@ class TLDCRMClient:
                     "carrier": str(r.get("carrier_name") or "").strip(),
                     "plan": str(r.get("product_plan_name") or r.get("product_name") or "").strip(),
                     "sep": sep.get(str(r.get("lead_id")), ""),
+                    "state": str(r.get("lead_state") or "").strip().upper(),
                     "status": str(r.get("status_name") or "").strip(),
                 })
             rows.sort(key=lambda x: x["date_sold"], reverse=True)
@@ -764,7 +765,18 @@ class TLDCRMClient:
             elif r["enroller"] == agent:
                 mine.append(dict(r, role="enrolled"))
         closed = sum(1 for r in mine if r["role"] == "closed")
-        return {"people": people, "rows": mine, "agent": agent,
+
+        # Where this person's deals come from — split by role, since someone can close in
+        # one set of states and enroll in another.
+        by_state = {}
+        for r in mine:
+            st = r["state"] or "—"
+            s = by_state.setdefault(st, {"state": st, "closed": 0, "enrolled": 0, "total": 0})
+            s[r["role"]] += 1
+            s["total"] += 1
+        states = sorted(by_state.values(), key=lambda x: (-x["total"], x["state"]))
+
+        return {"people": people, "rows": mine, "agent": agent, "by_state": states,
                 "summary": {"closed": closed, "enrolled": len(mine) - closed, "total": len(mine)}}
 
     def build_dashboard(self, start, end, range_label):
