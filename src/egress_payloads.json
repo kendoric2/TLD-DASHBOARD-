@@ -14,7 +14,7 @@
     "policies_ids": {
       "endpoint": "policies",
       "date_bounded": true,
-      "payload": { "columns": ["policy_id", "lead_id", "carrier_name", "fronter_id", "fronter_name", "stage", "agent_name", "commission_paid", "commission_paid_fronter", "lead_state", "status_name"], "limit": 200000 }
+      "payload": { "columns": ["policy_id", "lead_id", "date_sold", "carrier_name", "fronter_id", "fronter_name", "stage", "agent_name", "commission_paid", "commission_paid_fronter", "lead_state", "status_name"], "limit": 200000 }
     },
 
     "billable_leads_count": {
@@ -41,12 +41,6 @@
       "endpoint": "policies",
       "date_bounded": true,
       "payload": { "columns": ["policy_id", "lead_id", "date_sold", "agent_name", "fronter_name", "carrier_name", "product_plan_name", "product_name", "status_name", "stage", "lead_state"], "limit": 200000 }
-    },
-
-    "recent_sales": {
-      "endpoint": "policies",
-      "date_bounded": false,
-      "payload": { "sold": 1, "columns": ["date_sold", "lead_id", "agent_name", "commission_paid", "fronter_name", "commission_paid_fronter", "carrier_name"], "order_by": "date_sold", "sort": "DESC", "limit": 12 }
     },
 
     "agent_policies": {

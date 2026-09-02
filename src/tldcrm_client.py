@@ -788,7 +788,6 @@ class TLDCRMClient:
         jobs = {
             "policy_rows": lambda: self.cached_rows("policies_ids", start, end),
             "avg_gtl":    lambda: _first_num(self.run("avg_gtl_premium", start, end)),
-            "recent":     lambda: self.run("recent_sales"),
         }
         results, errors = {}, []
 
@@ -819,15 +818,20 @@ class TLDCRMClient:
         by_state = _state_breakdown(kept_policies)       # deals per customer state (GTL-excluded)
         agents = _agent_breakdown(kept_policies)         # GTL-excluded -> agent total = Policies Sold
 
+        # Every sale in the selected range, newest first — derived from the SAME deduped pull
+        # as Policies Sold and the carrier chart, so the three can never disagree. This used
+        # to be its own query hardcoded to "the last 12 sales", which ignored the date range
+        # entirely: picking a past month still showed today's sales.
         recent = [{
             "date_sold": r.get("date_sold"),
             "lead_id": r.get("lead_id"),
-            "agent": r.get("agent_name") or r.get("agent"),
+            "agent": str(r.get("agent_name") or "").strip(),
             "agent_commission": _num(r.get("commission_paid")),
-            "enroller": r.get("fronter_name") or r.get("fronter"),
+            "enroller": str(r.get("fronter_name") or "").strip(),
             "fronter_commission": _num(r.get("commission_paid_fronter")),
-            "carrier": r.get("carrier_name") or r.get("carrier"),
-        } for r in (results.get("recent") or [])]
+            "carrier": str(r.get("carrier_name") or "").strip(),
+        } for r in deduped_all]
+        recent.sort(key=lambda x: str(x["date_sold"] or ""), reverse=True)
 
         # Agent rows carry name + policies only here (deduped, stage=sale, GTL-excluded, so
         # the table's policy total equals Policies Sold). COST/CPA + the Total Spend / Blended

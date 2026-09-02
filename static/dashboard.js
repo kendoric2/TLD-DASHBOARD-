@@ -17,6 +17,8 @@ let stateByAbbr = {};        // state abbr -> its breakdown, for click-through
 let selectedActiveCarrier = null;  // carrier row selected in the Active Policies tile
 let activeByCarrier = {};          // carrier -> its active breakdown (incl states)
 let activeCombined = null;         // aggregate active-by-state across all carriers (default view)
+let lastRecentRows = [];           // Sales rows, kept so sorting never refetches
+let recentSortKey = "date_sold", recentSortDir = -1;   // newest sale first by default
 let lastBilledRows = [];           // Invoice-audit rows, kept so sorting never refetches
 let billedSortKey = "call_date", billedSortDir = -1;   // newest call first by default
 let lastDetailRows = [];           // Agent Detail rows, kept so sorting never refetches
@@ -571,23 +573,65 @@ function renderEnrollmentDetail(en){
 }
 
 function renderRecent(rows) {
+  lastRecentRows = rows || [];
+  renderRecentRows();
+}
+
+/* Sales-table sorting. Same rules as the other tables: text A→Z first, dates/money
+   newest-or-highest first, blanks last. Sorts rows already loaded, so it's instant. */
+function sortRecentRows(rows){
+  const k = recentSortKey, dir = recentSortDir;
+  const numeric = (k === "agent_commission" || k === "fronter_commission" || k === "lead_id");
+  return [...(rows || [])].sort((a, b) => {
+    const x = a[k], y = b[k];
+    const xb = x === "" || x == null, yb = y === "" || y == null;
+    if (xb !== yb) return xb ? 1 : -1;
+    if (xb && yb) return 0;
+    if (numeric) return dir * ((Number(x) || 0) - (Number(y) || 0));
+    return dir * String(x).localeCompare(String(y));
+  });
+}
+function updateRecentSortArrows(){
+  document.querySelectorAll("th[data-rsort]").forEach(th => {
+    if (!th.dataset.label) th.dataset.label = th.textContent.trim();
+    const active = th.getAttribute("data-rsort") === recentSortKey;
+    th.classList.toggle("sorted", active);
+    th.textContent = th.dataset.label + (active ? (recentSortDir === 1 ? " ▲" : " ▼") : "");
+  });
+}
+function renderRecentRows(){
+  updateRecentSortArrows();
   // commission is always set before submission, so a blank means "not in this pull" → em dash
   const money = v => (v === null || v === undefined || v === "")
     ? '<span class="dash">—</span>'
     : '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-  $("#recent").innerHTML = (rows || []).map(r => {
+  const rows = sortRecentRows(lastRecentRows);
+  const n = rows.length;
+  $("#recentCount").textContent = n ? ` · ${n.toLocaleString()} ${n === 1 ? "sale" : "sales"}` : "";
+  $("#recent").innerHTML = n ? rows.map(r => {
     const date = r.date_sold ? String(r.date_sold).split(" ")[0] : "";
     const enroller = r.enroller ? r.enroller : '<span class="dash">—</span>';
     return `
     <tr>
       <td>${date}</td>
       <td>${r.lead_id ?? ""}</td>
-      <td>${r.agent ?? ""}</td><td class="num col-sep">${money(r.agent_commission)}</td>
+      <td>${r.agent || '<span class="dash">—</span>'}</td><td class="num col-sep">${money(r.agent_commission)}</td>
       <td>${enroller}</td><td class="num col-sep">${money(r.fronter_commission)}</td>
       <td>${r.carrier ?? ""}</td>
     </tr>`;
-  }).join("");
+  }).join("")
+   : '<tr><td colspan="7" class="dash" style="padding:14px">No sales in this range.</td></tr>';
 }
+document.querySelectorAll("th[data-rsort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.getAttribute("data-rsort");
+    if (recentSortKey === k) recentSortDir *= -1;
+    else { recentSortKey = k;
+           recentSortDir = (k === "date_sold" || k === "lead_id"
+                            || k.endsWith("commission")) ? -1 : 1; }
+    renderRecentRows();
+  });
+});
 
 // Active Policies by carrier — in-force count, total sold, retention % per carrier.
 // Click a carrier row to see its active policies broken down by state.
