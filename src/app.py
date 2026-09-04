@@ -258,6 +258,30 @@ def api_vendors_export():
         return jsonify({"error": f"Export failed: {e}"}), 500
 
 
+@app.route("/api/vendors/state_report/export")
+def api_state_vendor_report_export():
+    """Download the state performance report (best/worst states, state x vendor
+    breakdown) as .xlsx. Always all vendors combined — that's the point of the report."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    client = _client()
+    if client is None:
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to export."}), 400
+    try:
+        import export_xlsx
+        data = client.state_vendor_report(start, end)
+        buf, fname = export_xlsx.build_state_vendor_report(start, end, data)
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        return jsonify({"error": "Excel export needs openpyxl: pip install -r requirements.txt"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
+
+
 @app.route("/api/vendors/dispo/export")
 def api_vendor_dispo_export():
     """Download the call-disposition breakdown for a vendor/range as .xlsx."""

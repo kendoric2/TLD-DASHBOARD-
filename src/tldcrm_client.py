@@ -446,6 +446,68 @@ class TLDCRMClient:
                            "billable": sum(v["billable"] for v in out),
                            "sold": sum(v["sold"] for v in out)}}
 
+    def state_vendor_report(self, start, end):
+        """Every purchased lead in the range, broken down by customer state AND by which
+        vendor sold it — so you can tell whether a state is genuinely weak or just badly
+        served by one vendor. Leads are filtered on date_created (TLD's leads exception),
+        same basis as vendor_leads, so the two reports always agree on totals.
+
+        Returns {"by_state": [...], "totals": {...}}. Each state entry has the state's own
+        leads/billable/sold/conversion PLUS a "vendors" list with the same four numbers
+        per vendor that sold into that state — so state and vendor breakdowns come out of
+        one pull and can never disagree. Sorted best-converting state first; conversion is
+        sold ÷ billable (0 when there were no billable leads, so a lead-starved state
+        doesn't look artificially perfect)."""
+        body = {"columns": ["lead_id", "vendor_id", "state", "billable", "policies_sold"],
+                "date_created": f"{start} 00:00:00", "date_created_end": f"{end} 23:59:59",
+                "limit": 200000}
+        rows = config.egress_get("leads", body, timeout=max(self.timeout, 240))
+        try:
+            names = {v["vendor_id"]: v["name"] for v in self.vendor_catalogue()}
+        except Exception:
+            names = {}
+
+        by_state = {}
+        for r in (rows if isinstance(rows, list) else []):
+            if not isinstance(r, dict):
+                continue
+            state = str(r.get("state") or "").strip().upper()
+            if not state:
+                continue
+            vid = str(r.get("vendor_id") or "")
+            vname = names.get(vid) or (f"vendor {vid}" if vid else "(none)")
+            billable = str(r.get("billable")) in ("1", "1.0", "True", "true")
+            sold = _num(r.get("policies_sold")) >= 1
+
+            s = by_state.setdefault(state, {"state": state, "leads": 0, "billable": 0,
+                                            "sold": 0, "_vendors": {}})
+            s["leads"] += 1
+            s["billable"] += billable
+            s["sold"] += sold
+            v = s["_vendors"].setdefault(vname, {"vendor": vname, "leads": 0,
+                                                 "billable": 0, "sold": 0})
+            v["leads"] += 1
+            v["billable"] += billable
+            v["sold"] += sold
+
+        def _conv(billable, sold):
+            return round(sold / billable * 100, 1) if billable else 0.0
+
+        out = []
+        for s in by_state.values():
+            vendors = sorted(s["_vendors"].values(), key=lambda v: -v["sold"])
+            for v in vendors:
+                v["conversion"] = _conv(v["billable"], v["sold"])
+            out.append({"state": s["state"], "leads": s["leads"], "billable": s["billable"],
+                        "sold": s["sold"], "conversion": _conv(s["billable"], s["sold"]),
+                        "vendors": vendors})
+        out.sort(key=lambda x: (-x["conversion"], -x["billable"]))
+
+        return {"by_state": out,
+                "totals": {"leads": sum(s["leads"] for s in out),
+                           "billable": sum(s["billable"] for s in out),
+                           "sold": sum(s["sold"] for s in out)}}
+
     def vendor_cost(self, start, end, vendor_id=None):
         """Spend / sales / billable calls / CPA for one vendor (or org-wide) from
         report_cpa_agent. costs_all IS vendor-filterable — verified: INBOUND and GENERAL

@@ -288,3 +288,46 @@ def build_vendors(start, end, vendor_label, rows, totals):
     wb.save(buf)
     buf.seek(0)
     return buf, f"Vendors_{safe_name(vendor_label or 'all')}_{start}_{end}.xlsx"
+
+
+def build_state_vendor_report(start, end, data):
+    """Best/worst customer states, and which vendor is behind each one — two sheets from
+    one pull so they can never disagree. Sheet 1 ranks states by conversion (sold ÷
+    billable), best first. Sheet 2 breaks every state down by vendor."""
+    wb = Workbook()
+    states = data.get("by_state") or []
+    totals = data.get("totals") or {}
+
+    ws = wb.active
+    ws.title = "Best-Worst States"
+    ws.append([f"State performance — {start} to {end}"])
+    ws.append(["Ranked by conversion (sold ÷ billable leads), best first. "
+               "Watch the Billable column — a handful of leads can swing a percentage."])
+    ws.append([f"{totals.get('leads', 0):,} leads  ·  {totals.get('billable', 0):,} billable  ·  "
+               f"{totals.get('sold', 0):,} sold"])
+    ws.append([])
+    ws.append(["State", "Leads", "Billable", "Sold", "Conversion"])
+    for s in states:
+        ws.append([s["state"], s["leads"], s["billable"], s["sold"], s["conversion"]])
+    if states:
+        ws.append([])
+        t_conv = round(totals.get("sold", 0) / totals.get("billable", 0) * 100, 1) \
+            if totals.get("billable") else 0
+        ws.append(["TOTAL", totals.get("leads", 0), totals.get("billable", 0),
+                   totals.get("sold", 0), t_conv])
+
+    ws2 = wb.create_sheet("By State x Vendor")
+    ws2.append([f"State × vendor breakdown — {start} to {end}"])
+    ws2.append(["Same states, split by which vendor sold the lead. Grouped by state, "
+               "highest-selling vendor first within each."])
+    ws2.append([])
+    ws2.append(["State", "State Conversion", "Vendor", "Leads", "Billable", "Sold", "Conversion"])
+    for s in states:
+        for v in (s.get("vendors") or []):
+            ws2.append([s["state"], s["conversion"], v["vendor"], v["leads"],
+                       v["billable"], v["sold"], v["conversion"]])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf, f"StatePerformance_{start}_{end}.xlsx"

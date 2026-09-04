@@ -1201,6 +1201,11 @@ $("#vendorExport").addEventListener("click", () => {
   window.location = `/api/vendors/export?range=custom&start=${s}&end=${e}`
     + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
 });
+$("#stateReportExport").addEventListener("click", () => {
+  const {s, e} = vendorRange();          // always all vendors, so the vendor filter is ignored
+  if (!s || !e) return;
+  window.location = `/api/vendors/state_report/export?range=custom&start=${s}&end=${e}`;
+});
 $("#billedLoad").addEventListener("click", loadBilled);
 $("#billedExport").addEventListener("click", () => {
   const {s, e, v} = vendorRange();
