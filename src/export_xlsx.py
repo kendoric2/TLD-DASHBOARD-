@@ -242,3 +242,49 @@ def build_state(start, end, range_label, rows, include_agents=False):
     buf.seek(0)
     suffix = "_with_agents" if include_agents else ""
     return buf, f"ProductionByState_{start}_{end}{suffix}.xlsx"
+
+
+VENDOR_COLUMNS = [
+    ("Vendor",         "vendor"),
+    ("Leads",          "leads"),
+    ("Billable",       "billable"),
+    ("Sold",           "sold"),
+    ("Sold / Billable", "pct"),
+    ("Price",          "price"),
+    ("Status",         "status"),
+]
+
+
+def build_vendors(start, end, vendor_label, rows, totals):
+    """Vendors tile: lead intake and price/status per vendor for the range — same rows,
+    same Sold/Billable %, as the on-screen table (and its Totals row)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _sheet_title(vendor_label or "Vendors")
+
+    t = totals or {}
+    ws.append([f"Vendors: {vendor_label or 'all vendors'}"])
+    ws.append([f"Range: {start} to {end}"])
+    ws.append([f"{t.get('leads', 0):,} leads  ·  {t.get('billable', 0):,} billable  ·  "
+               f"{t.get('sold', 0):,} produced a policy"])
+    ws.append([])
+    ws.append([h for h, _k in VENDOR_COLUMNS])
+
+    for r in rows:
+        billable = r.get("billable") or 0
+        sold = r.get("sold") or 0
+        pct = round(sold / billable * 100, 1) if billable else 0
+        price = r.get("price")
+        ws.append([r.get("vendor") or "", r.get("leads") or 0, billable, sold, pct,
+                   round(price, 2) if price else "", r.get("status") or ""])
+
+    if rows:
+        t_billable, t_sold = t.get("billable", 0), t.get("sold", 0)
+        t_pct = round(t_sold / t_billable * 100, 1) if t_billable else 0
+        ws.append([])
+        ws.append(["TOTAL", t.get("leads", 0), t_billable, t_sold, t_pct, "", ""])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf, f"Vendors_{safe_name(vendor_label or 'all')}_{start}_{end}.xlsx"

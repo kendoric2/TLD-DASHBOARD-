@@ -221,6 +221,43 @@ def api_vendors():
     return jsonify(data)
 
 
+@app.route("/api/vendors/export")
+def api_vendors_export():
+    """Download the Vendors tile (lead intake, price, status per vendor) as .xlsx."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    client = _client()
+    if client is None:
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to export."}), 400
+    try:
+        import export_xlsx
+        vendor = (request.args.get("vendor_id") or "").strip() or None
+        leads = client.vendor_leads(start, end, vendor)
+        catalogue = {v["vendor_id"]: v for v in client.vendor_catalogue()}
+
+        name = "all vendors"
+        if vendor:
+            v = catalogue.get(str(vendor))
+            name = v["name"] if v else name
+
+        rows = []
+        for r in (leads.get("by_vendor") or []):
+            c = catalogue.get(r["vendor_id"], {})
+            rows.append({**r, "price": c.get("price_inbound") or c.get("price"),
+                        "status": c.get("status")})
+
+        buf, fname = export_xlsx.build_vendors(start, end, name, rows, leads.get("totals") or {})
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        return jsonify({"error": "Excel export needs openpyxl: pip install -r requirements.txt"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
+
+
 @app.route("/api/vendors/dispo/export")
 def api_vendor_dispo_export():
     """Download the call-disposition breakdown for a vendor/range as .xlsx."""

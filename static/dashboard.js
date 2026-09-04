@@ -1195,6 +1195,12 @@ $("#tabDetail").addEventListener("click", () => showTab("detail"));
 $("#tabVendors").addEventListener("click", () => showTab("vendors"));
 $("#vendorApply").addEventListener("click", loadVendors);
 $("#vendorPick").addEventListener("change", loadVendors);
+$("#vendorExport").addEventListener("click", () => {
+  const {s, e, v} = vendorRange();
+  if (!s || !e) return;
+  window.location = `/api/vendors/export?range=custom&start=${s}&end=${e}`
+    + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
+});
 $("#billedLoad").addEventListener("click", loadBilled);
 $("#billedExport").addEventListener("click", () => {
   const {s, e, v} = vendorRange();
