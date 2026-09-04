@@ -1230,6 +1230,17 @@ $("#detailExport").addEventListener("click", () => {
 });
 $("#detailAgent").addEventListener("change", () => { loadDetail(); $("#agentDispoWrap").hidden = true;
   $("#agentDispoSummary").textContent = "Load dispositions for this person."; });
+$("#activeExport").addEventListener("click", () => {
+  const sel = currentSel();
+  if (sel.key === "custom" && !validCustom(sel)) return;
+  window.location = `/api/active/export?${qsFor(sel)}`;
+});
+$("#stateExport").addEventListener("click", () => {
+  const sel = currentSel();
+  if (sel.key === "custom" && !validCustom(sel)) return;
+  const withAgents = $("#stateIncludeAgents").checked ? "&agents=1" : "";
+  window.location = `/api/state/export?${qsFor(sel)}${withAgents}`;
+});
 $("#agentDispoLoad").addEventListener("click", loadAgentDispo);
 ["detailStart","detailEnd"].forEach(id => { const el = $("#"+id);
   if (el) el.addEventListener("keydown", ev => { if (ev.key === "Enter") loadDetail(); }); });

@@ -128,6 +128,9 @@ main{padding:22px 28px 40px;max-width:1280px;margin:0 auto}
 .errbar{background:#FDECEA;border:1px solid #F5C6C2;color:#A33;padding:10px 14px;
   border-radius:10px;font-size:13px;margin-bottom:14px}
 
+.card-actions{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin:-4px 0 12px;flex-wrap:wrap}
+.card-actions label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer}
+
 /* KPI cards */
 .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);

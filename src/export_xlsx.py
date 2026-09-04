@@ -163,3 +163,82 @@ def build(agent, start, end, range_label, summary, rows):
     wb.save(buf)
     buf.seek(0)
     return buf, f"AgentDetail_{safe_name(agent)}_{start}_{end}.xlsx"
+
+
+ACTIVE_COLUMNS = [
+    ("Carrier",   "carrier"),
+    ("Active",    "active"),
+    ("Sold",      "sold"),
+    ("% Active",  "pct_active"),
+]
+
+
+def build_active(start, end, range_label, rows):
+    """Active Policies, one row per carrier — same numbers as the on-screen table
+    (active vs. sold, of what was sold in the selected range)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Active Policies"
+
+    ws.append([f"Active Policies — {range_label}"])
+    ws.append([f"Range: {start} to {end}"])
+    ws.append(["In force, of what was sold in this range"])
+    ws.append([])
+    ws.append([h for h, _k in ACTIVE_COLUMNS])
+
+    total_active = total_sold = 0
+    for r in rows:
+        active, sold = r.get("active") or 0, r.get("sold") or 0
+        pct = round(active / sold * 100, 1) if sold else 0
+        ws.append([r.get("carrier") or "", active, sold, pct])
+        total_active += active
+        total_sold += sold
+    if rows:
+        ws.append([])
+        pct = round(total_active / total_sold * 100, 1) if total_sold else 0
+        ws.append(["TOTAL", total_active, total_sold, pct])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf, f"ActivePolicies_{start}_{end}.xlsx"
+
+
+def build_state(start, end, range_label, rows, include_agents=False):
+    """Production by State: one row per state x carrier (GTL-excluded, same as the on-screen
+    map). Agent breakdown is a second sheet, added only when the caller opts in — most people
+    only care about the carrier split."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "By Carrier"
+
+    ws.append([f"Production by State — {range_label}"])
+    ws.append([f"Range: {start} to {end}"])
+    ws.append(["Deals by customer state, broken down by carrier (GTL excluded)"])
+    ws.append([])
+    ws.append(["State", "Carrier", "Deals", "State Total", "Share of State"])
+    for s in rows:
+        state_total = s.get("count") or 0
+        for c in (s.get("carriers") or []):
+            cnt = c.get("count") or 0
+            share = round(cnt / state_total * 100, 1) if state_total else 0
+            ws.append([s.get("state") or "", c.get("label") or "", cnt, state_total, share])
+
+    if include_agents:
+        ws2 = wb.create_sheet("By Agent")
+        ws2.append([f"Production by State — {range_label} (by agent)"])
+        ws2.append([f"Range: {start} to {end}"])
+        ws2.append([])
+        ws2.append(["State", "Agent", "Deals", "State Total", "Share of State"])
+        for s in rows:
+            state_total = s.get("count") or 0
+            for a in (s.get("agents") or []):
+                cnt = a.get("count") or 0
+                share = round(cnt / state_total * 100, 1) if state_total else 0
+                ws2.append([s.get("state") or "", a.get("name") or "", cnt, state_total, share])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    suffix = "_with_agents" if include_agents else ""
+    return buf, f"ProductionByState_{start}_{end}{suffix}.xlsx"

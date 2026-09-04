@@ -359,6 +359,56 @@ def api_agent_detail_export():
         return jsonify({"error": f"Export failed: {e}"}), 500
 
 
+@app.route("/api/active/export")
+def api_active_export():
+    """Download the Active Policies table (active vs. sold per carrier) as .xlsx."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    client = _client()
+    if client is None:
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to export."}), 400
+    try:
+        import export_xlsx
+        # Reuses the same computation as /api/dashboard so the file can never disagree
+        # with what's on screen.
+        data = client.build_dashboard(start, end, label)
+        buf, fname = export_xlsx.build_active(start, end, label, data.get("active_by_carrier") or [])
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        return jsonify({"error": "Excel export needs openpyxl: pip install -r requirements.txt"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
+
+
+@app.route("/api/state/export")
+def api_state_export():
+    """Download Production by State (state x carrier, GTL-excluded) as .xlsx. Pass
+    agents=1 to add a second sheet with the same breakdown by agent instead of carrier."""
+    try:
+        start, end, label = _resolve_range(request.args)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    client = _client()
+    if client is None:
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to export."}), 400
+    try:
+        import export_xlsx
+        include_agents = request.args.get("agents") == "1"
+        data = client.build_dashboard(start, end, label)
+        buf, fname = export_xlsx.build_state(start, end, label, data.get("by_state") or [], include_agents)
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except ImportError:
+        return jsonify({"error": "Excel export needs openpyxl: pip install -r requirements.txt"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
+
+
 @app.route("/api/sales_board")
 def api_sales_board():
     """Combined sales leaderboard (agents + fronters) for the board's OWN date range."""
