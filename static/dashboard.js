@@ -813,8 +813,10 @@ function toggleBoard(){
 
 /* ===== Agent Detail tab — every deal a person closed or enrolled, with the SEP ===== */
 function showTab(which){
-  const views = {dashboard: "#viewDashboard", detail: "#viewDetail", vendors: "#viewVendors"};
-  const tabs = {dashboard: "#tabDashboard", detail: "#tabDetail", vendors: "#tabVendors"};
+  const views = {dashboard: "#viewDashboard", detail: "#viewDetail", vendors: "#viewVendors",
+                live: "#viewLive"};
+  const tabs = {dashboard: "#tabDashboard", detail: "#tabDetail", vendors: "#tabVendors",
+               live: "#tabLive"};
   Object.keys(views).forEach(k => {
     $(views[k]).hidden = (k !== which);
     $(tabs[k]).classList.toggle("active", k === which);
@@ -830,6 +832,12 @@ function showTab(which){
     setPicker(fpById["vendorStart"], "vendorStart", startOfWeek(today));
     setPicker(fpById["vendorEnd"], "vendorEnd", today);
     loadVendors();
+  }
+  if (which === "live"){
+    loadLiveAgents();
+    startLiveAutoRefresh();
+  } else {
+    stopLiveAutoRefresh();
   }
 }
 
@@ -1190,9 +1198,110 @@ function openAgentDetail(name){
 }
 
 /* ---- GUI events ---- */
+/* ===== Live Agents tab — real-time status straight from the dialer ===== */
+let liveTimer = null;
+let liveAgentsCache = [];       // last fetch, so filter changes re-render without a re-fetch
+let liveGeneratedAt = null;
+
+function startLiveAutoRefresh(){
+  stopLiveAutoRefresh();
+  const ms = Number($("#liveAutoRefresh").value || 0);
+  if (ms > 0){
+    liveTimer = setInterval(loadLiveAgents, ms);
+  }
+}
+function stopLiveAutoRefresh(){
+  if (liveTimer){ clearInterval(liveTimer); liveTimer = null; }
+}
+function liveDuration(sec){
+  sec = sec || 0;
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h ? `${h}h ${m}m` : (m ? `${m}m ${s}s` : `${s}s`);
+}
+function titleCase(s){ return String(s || "").replace(/\b\w/g, c => c.toUpperCase()); }
+const LIVE_STATUS_COLOR = {INCALL: "var(--good)", DISPO: "var(--warn)", READY: "#2E7DD1",
+                           PAUSED: "var(--warn)", DEAD: "var(--bad)"};
+const LIVE_STATUS_TITLE = {INCALL: "On a Call", DISPO: "Wrapping Up", READY: "Ready",
+                           PAUSED: "Paused", DEAD: "Disconnected"};
+async function loadLiveAgents(){
+  const sum = $("#liveSummary");
+  try {
+    const d = await fetch("/api/live_agents").then(r => r.json());
+    if (d.error){ sum.textContent = d.error; return; }
+    if (d.demo){ sum.textContent = "Demo mode — add your TLDCRM credentials to load this."; return; }
+    liveAgentsCache = d.agents || [];
+    liveGeneratedAt = d.generated_at;
+    fillLiveFilters();
+    renderLiveAgents();
+  } catch (err){ sum.textContent = "Could not load live agents."; }
+}
+// Keeps whatever the user had picked, as long as it's still a live option; options are
+// rebuilt every refresh since who's on which campaign changes constantly.
+function fillLiveFilters(){
+  const fillOne = (id, values, allLabel) => {
+    const sel = $(id);
+    const cur = sel.value;
+    const opts = Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = `<option value="">${allLabel}</option>`
+      + opts.map(v => `<option value="${v}">${v === v.toLowerCase() ? titleCase(v) : v}</option>`).join("");
+    if (opts.includes(cur)) sel.value = cur;
+  };
+  fillOne("#liveCampaignFilter", liveAgentsCache.map(a => a.campaign), "All campaigns");
+  fillOne("#liveRoleFilter", liveAgentsCache.map(a => a.role), "All roles");
+}
+function renderLiveAgents(){
+  const total = liveAgentsCache.length;
+  const campaign = $("#liveCampaignFilter").value;
+  const role = $("#liveRoleFilter").value;
+  const agents = liveAgentsCache.filter(a =>
+    (!campaign || a.campaign === campaign) && (!role || a.role === role));
+
+  const filterNote = (campaign || role)
+    ? ` &middot; showing <b>${agents.length}</b> of ${total}`
+        + (campaign ? ` &middot; ${campaign}` : "") + (role ? ` &middot; ${titleCase(role)}` : "")
+    : "";
+  $("#liveSummary").innerHTML =
+    `<b>${total}</b> agents logged in${filterNote} &middot; as of ${liveGeneratedAt || "—"}`;
+
+  const counts = {};
+  agents.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
+  const card = (status) => {
+    const n = counts[status] || 0;
+    return `<div class="kpi"><div class="label" style="color:${LIVE_STATUS_COLOR[status]}">
+      ${LIVE_STATUS_TITLE[status]}</div><div class="value">${n}</div></div>`;
+  };
+  $("#liveCounts").innerHTML = ["INCALL", "READY", "DISPO", "PAUSED", "DEAD"].map(card).join("");
+
+  $("#liveRows").innerHTML = agents.length ? agents.map(a => {
+    const color = LIVE_STATUS_COLOR[a.status] || "var(--muted)";
+    return `
+    <div class="live-tile" style="border-left-color:${color}">
+      <div class="lt-top">
+        <span style="color:${color}">&#9679; ${a.status_label}</span>
+        <span class="lt-dur">${liveDuration(a.duration_sec)}</span>
+      </div>
+      <div class="lt-name">${a.name}</div>
+      <div class="lt-meta">
+        <span class="lt-role">${a.role === "unknown" ? "—" : titleCase(a.role)}</span>
+        <span>${a.campaign || '<span class="dash">&mdash;</span>'}</span>
+      </div>
+      <div class="lt-foot">
+        <span>${a.calls_today || 0} calls today</span>
+        ${a.lead_id ? `<span class="lt-phone" title="Phone: ${a.phone}">Lead ${a.lead_id}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("") : `<div class="dash" style="padding:14px">${
+    liveAgentsCache.length ? "No one matches this filter." : "Nobody logged in right now."}</div>`;
+}
+$("#liveRefresh").addEventListener("click", loadLiveAgents);
+$("#liveAutoRefresh").addEventListener("change", startLiveAutoRefresh);
+$("#liveCampaignFilter").addEventListener("change", renderLiveAgents);
+$("#liveRoleFilter").addEventListener("change", renderLiveAgents);
+
 $("#tabDashboard").addEventListener("click", () => showTab("dashboard"));
 $("#tabDetail").addEventListener("click", () => showTab("detail"));
 $("#tabVendors").addEventListener("click", () => showTab("vendors"));
+$("#tabLive").addEventListener("click", () => showTab("live"));
 $("#vendorApply").addEventListener("click", loadVendors);
 $("#vendorPick").addEventListener("change", loadVendors);
 $("#vendorExport").addEventListener("click", () => {

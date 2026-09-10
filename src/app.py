@@ -470,6 +470,21 @@ def api_state_export():
         return jsonify({"error": f"Export failed: {e}"}), 500
 
 
+@app.route("/api/live_agents")
+def api_live_agents():
+    """Real-time agent status board — who's on a call, ready, paused, or wrapping up,
+    straight from the dialer's tldialer_live_agents table."""
+    client = _client()
+    if client is None:
+        return jsonify({"demo": True, "agents": [], "counts": {}, "total": 0, "generated_at": None})
+    try:
+        data = client.live_agents()
+        data["demo"] = False
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": f"Could not load live agents: {e}"}), 500
+
+
 @app.route("/api/sales_board")
 def api_sales_board():
     """Combined sales leaderboard (agents + fronters) for the board's OWN date range."""

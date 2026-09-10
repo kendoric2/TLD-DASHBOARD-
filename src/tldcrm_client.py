@@ -32,6 +32,20 @@ import metrics
 # Note the "tldialer/" namespace: bare endpoint names don't reach it.
 CALL_LOG = "tldialer/tldialer_call_log"
 
+# Live Agents board: real-time status per agent, straight from the dialer. The table is
+# named tldialer_live_agents — NOT vicidial_live_agents, which this API key can't reach —
+# following the same "tldialer_*" naming as tldialer_call_log rather than VICIdial's own
+# vicidial_* convention. Confirmed by probing: READY, INCALL, PAUSED, DISPO (wrapping up
+# the last call), and DEAD (phone line dropped without logging out).
+LIVE_AGENTS = "tldialer/tldialer_live_agents"
+LIVE_STATUS_LABELS = {
+    "READY": "Ready", "INCALL": "On a call", "PAUSED": "Paused",
+    "DISPO": "Wrapping up", "DEAD": "Disconnected",
+}
+# Sort priority: calls in progress and post-call wrap-up first (what a supervisor scans
+# for), then ready, then paused, then stale/dropped lines last.
+LIVE_STATUS_ORDER = {"INCALL": 0, "DISPO": 1, "READY": 2, "PAUSED": 3, "DEAD": 4}
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_HERE, "egress_payloads.json"), "r", encoding="utf-8") as _f:
     PAYLOADS = json.load(_f)["queries"]
@@ -507,6 +521,108 @@ class TLDCRMClient:
                 "totals": {"leads": sum(s["leads"] for s in out),
                            "billable": sum(s["billable"] for s in out),
                            "sold": sum(s["sold"] for s in out)}}
+
+    def live_agents(self):
+        """Real live agent status, straight from the dialer. Returns everyone currently
+        logged in (agents who are logged out entirely don't appear at all — this isn't a
+        full roster, just who's live right now), sorted so calls-in-progress and
+        wrap-up surface first, then ready, then paused, then dropped lines.
+
+        The dialer has no role field, so "role" (agent/fronter/manager/...) is joined in
+        from the CRM's users endpoint by name — same role_names field agents_by_group.py
+        uses. Confirmed by probing: ~97% of live agents match by name; the rest show as
+        role "unknown" rather than being dropped from the board."""
+        rows = config.egress_get(LIVE_AGENTS, {
+            "columns": ["user", "agent_full_name", "live_status", "last_state_duration",
+                       "extension", "campaign_id", "campaign_campaign_name",
+                       "call_ingroup_group_name", "calls_today", "call_phone_number"],
+            "limit": 1000}, timeout=max(self.timeout, 60))
+
+        role_by_key = {}
+        try:
+            crm_rows = config.egress_get("users", {
+                "columns": ["name", "full_name", "role_names"], "limit": 5000},
+                timeout=max(self.timeout, 60))
+            for r in (crm_rows if isinstance(crm_rows, list) else []):
+                if not isinstance(r, dict):
+                    continue
+                role_raw = str(r.get("role_names") or "").strip().lower()
+                if not role_raw:
+                    continue
+                primary = role_raw.split(",")[0].strip() or "unknown"
+                for name_field in ("name", "full_name"):
+                    v = str(r.get(name_field) or "").strip()
+                    if not v:
+                        continue
+                    for key in _name_keys(v):
+                        role_by_key.setdefault(key, primary)
+        except Exception:
+            pass   # role is a nice-to-have; a CRM hiccup shouldn't take the live board down
+
+        def dur_seconds(s):
+            try:
+                h, m, sec = str(s or "0:0:0").split(":")
+                return int(h) * 3600 + int(m) * 60 + int(sec)
+            except (TypeError, ValueError):
+                return 0
+
+        out = []
+        for r in (rows if isinstance(rows, list) else []):
+            if not isinstance(r, dict):
+                continue
+            status = str(r.get("live_status") or "").strip().upper()
+            name = str(r.get("agent_full_name") or "").strip() or f"user {r.get('user')}"
+            full, loose = _name_keys(name)
+            role = role_by_key.get(full) or role_by_key.get(loose) or "unknown"
+            out.append({
+                "user_id": str(r.get("user") or ""),
+                "name": name,
+                "role": role,
+                "status": status,
+                "status_label": LIVE_STATUS_LABELS.get(status, status or "Unknown"),
+                "duration_sec": dur_seconds(r.get("last_state_duration")),
+                "extension": str(r.get("extension") or "").strip(),
+                "campaign": str(r.get("campaign_campaign_name") or r.get("campaign_id") or "").strip(),
+                "ingroup": str(r.get("call_ingroup_group_name") or "").strip(),
+                "calls_today": _num(r.get("calls_today")),
+                # only meaningful mid-call; blank the rest of the time
+                "phone": str(r.get("call_phone_number") or "").strip() if status == "INCALL" else "",
+            })
+
+        # Swap the raw phone number for TLD's lead_id on anyone INCALL. The dialer table
+        # has no lead_id itself, but the leads endpoint takes "phone" as a list and
+        # resolves the whole batch in one call — confirmed via probing (~180ms for 5
+        # numbers). A phone can match more than one lead (re-contacts, duplicates over
+        # time), so we keep the most recently created lead for that number.
+        incall_phones = sorted({a["phone"] for a in out if a["phone"]})
+        lead_id_by_phone = {}
+        if incall_phones:
+            try:
+                lead_rows = config.egress_get("leads", {
+                    "columns": ["lead_id", "phone", "date_created"],
+                    "phone": incall_phones, "limit": len(incall_phones) * 20},
+                    timeout=max(self.timeout, 30))
+                for r in (lead_rows if isinstance(lead_rows, list) else []):
+                    if not isinstance(r, dict):
+                        continue
+                    phone = str(r.get("phone") or "")
+                    created = str(r.get("date_created") or "")
+                    prev = lead_id_by_phone.get(phone)
+                    if phone and (not prev or created > prev[1]):
+                        lead_id_by_phone[phone] = (str(r.get("lead_id") or ""), created)
+            except Exception:
+                pass   # lead_id is a nice-to-have; don't take the whole board down for it
+
+        for a in out:
+            hit = lead_id_by_phone.get(a["phone"]) if a["phone"] else None
+            a["lead_id"] = hit[0] if hit else ""
+
+        out.sort(key=lambda a: (LIVE_STATUS_ORDER.get(a["status"], 9), -a["duration_sec"]))
+        counts = {}
+        for a in out:
+            counts[a["status"]] = counts.get(a["status"], 0) + 1
+        return {"agents": out, "counts": counts, "total": len(out),
+               "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
     def vendor_cost(self, start, end, vendor_id=None):
         """Spend / sales / billable calls / CPA for one vendor (or org-wide) from

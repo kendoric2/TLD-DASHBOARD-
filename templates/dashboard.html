@@ -51,6 +51,7 @@
   <button type="button" class="tab active" id="tabDashboard">Dashboard</button>
   <button type="button" class="tab" id="tabDetail">Agent Detail</button>
   <button type="button" class="tab" id="tabVendors">Vendors</button>
+  <button type="button" class="tab" id="tabLive">Live Agents</button>
 </nav>
 
 <main>
@@ -136,6 +137,37 @@
           <thead><tr><th>Disposition</th><th class="num">Count</th><th class="num">Share</th><th>&nbsp;</th></tr></thead>
           <tbody id="dispoRows"></tbody>
         </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="viewLive" hidden>
+    <div class="section-title">Live Agents
+      <span class="hint">&mdash; who's on a call, ready, paused, or wrapping up, straight from the dialer</span>
+    </div>
+    <div class="card">
+      <div class="card-actions">
+        <select class="detail-agent" id="liveCampaignFilter" aria-label="Filter by campaign">
+          <option value="">All campaigns</option>
+        </select>
+        <select class="detail-agent" id="liveRoleFilter" aria-label="Filter by role">
+          <option value="">All roles</option>
+        </select>
+        <button class="btn dark" id="liveRefresh">Refresh</button>
+        <label>Auto-refresh
+          <select class="detail-agent" id="liveAutoRefresh" aria-label="Auto-refresh interval" style="min-width:auto;padding:8px 9px">
+            <option value="0">Off</option>
+            <option value="5000">5s</option>
+            <option value="10000">10s</option>
+            <option value="15000" selected>15s</option>
+            <option value="30000">30s</option>
+          </select>
+        </label>
+      </div>
+      <div class="detail-summary" id="liveSummary"></div>
+      <div class="kpis vendor-cost" id="liveCounts"></div>
+      <div class="table-scroll" style="max-height:620px">
+        <div class="live-grid" id="liveRows"></div>
       </div>
     </div>
   </section>
