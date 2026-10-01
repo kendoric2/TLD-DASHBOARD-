@@ -274,4 +274,4 @@ footer{max-width:1280px;margin:0 auto;padding:18px 28px 40px;color:var(--muted);
 .xres.pending{background:#FFF4DB;color:#8A5A00}
 .xres.nosale{background:#EEF1F5;color:#5B6B80}
 .xres.notfound{background:#FDECEA;color:#B42318}
-#xferRows td:first-child,#xferRows td:nth-child(10){white-space:nowrap}
+#xferRows td:first-child,#xferRows td:nth-child(10),#xferRows td:nth-child(11){white-space:nowrap}

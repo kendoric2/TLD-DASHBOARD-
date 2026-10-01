@@ -12,9 +12,11 @@ works backwards from DialedIN's own list of transfers instead:
   3. POLICIES  policies on those leads                 policies, "lead_id" takes a list
 
 A fronter is PAID when one of the phone's leads has a NEW policy created on/after the
-transfer day. Old policies (from the previous FMO, set to Unsold) are ignored because
-they were created before the transfer. "Sale Made" on the call with no new policy yet is
-PENDING — the agent hasn't entered it; re-running the same file later picks it up.
+transfer day AND a manager has verified it ("dropped" — TLD's `verified` flag). Old
+policies (from the previous FMO, set to Unsold) are ignored because they were created
+before the transfer. A new policy not verified yet is AWAITING VERIFICATION; "Sale Made"
+on the call with no new policy yet is PENDING. The export is run weekly on Saturday after
+managers have verified the week, so both should be near zero by then.
 
 Every lookup was verified by sandbox/probes/probe_transfer_match.py (560/560 phones found,
 97% matched to an inbound call, median 1.7 min from DialedIN's CallDate).
@@ -173,7 +175,7 @@ def check(transfers):
     for batch in _chunks(lead_ids, 50):
         resp = config.egress_get("policies", {
             "columns": ["policy_id", "lead_id", "date_created", "date_sold", "status_name",
-                        "carrier_name", "agent_name"],
+                        "carrier_name", "agent_name", "verified", "verifier_name"],
             "lead_id": batch, "limit": 20000}, timeout=180)
         seen = set()
         for r in _rows(resp):
@@ -215,13 +217,16 @@ def check(transfers):
             call = best[1] if best else None
 
         new = sorted(credited.get(i, []), key=lambda p: str(p.get("date_created") or ""))
-        paid_pols = [p for p in new if str(p.get("status_name") or "").strip().lower() not in UNPAID_STATUSES]
+        live = [p for p in new if str(p.get("status_name") or "").strip().lower() not in UNPAID_STATUSES]
+        paid_pols = [p for p in live if str(p.get("verified") or "").strip() in ("1", "1.0", "True", "true")]
         disposition = str(call.get("status_name") or "").strip() if call else ""
         lead_id = (str(call.get("lead_vendor_lead_code") or "").strip() if call else "") \
             or t["tld_id"] or (leads_by_phone.get(t["phone"]) or [""])[-1]
 
         if paid_pols:
             result = "Paid"
+        elif live:
+            result = "Awaiting verification"
         elif disposition.lower() == "sale made":
             result = "Pending"
         elif not call:
@@ -229,7 +234,7 @@ def check(transfers):
         else:
             result = "No sale"
 
-        shown = paid_pols or new
+        shown = paid_pols or live or new
         rows.append({
             "rep": t["rep"] or "(no rep)",
             "campaign": t["campaign"],
@@ -244,6 +249,8 @@ def check(transfers):
             "result": result,
             "policies": len(paid_pols),
             "carrier": ", ".join(sorted({str(p.get("carrier_name") or "").strip() for p in shown} - {""})),
+            "verified_by": ", ".join(sorted({str(p.get("verifier_name") or "").strip()
+                                             for p in paid_pols} - {"", "None"})),
             "policy_status": ", ".join(sorted({str(p.get("status_name") or "").strip() for p in shown} - {""})),
             "date_sold": min((str(p.get("date_sold") or "")[:10] for p in shown
                               if str(p.get("date_sold") or "")[:4] not in ("", "None", "0000")), default=""),
@@ -252,18 +259,20 @@ def check(transfers):
     reps = {}
     for r in rows:
         f = reps.setdefault(r["rep"], {"rep": r["rep"], "transfers": 0, "found": 0, "paid": 0,
-                                       "policies": 0, "pending": 0, "not_found": 0})
+                                       "policies": 0, "awaiting": 0, "pending": 0,
+                                       "not_found": 0})
         f["transfers"] += 1
         f["found"] += r["result"] != "Not found"
         f["paid"] += r["result"] == "Paid"
         f["policies"] += r["policies"]
+        f["awaiting"] += r["result"] == "Awaiting verification"
         f["pending"] += r["result"] == "Pending"
         f["not_found"] += r["result"] == "Not found"
     for f in reps.values():
         f["payable"] = f["paid"] if PAY_ONCE_PER_TRANSFER else f["policies"]
     by_rep = sorted(reps.values(), key=lambda f: (-f["payable"], -f["transfers"], f["rep"].lower()))
 
-    keys = ("transfers", "found", "paid", "policies", "pending", "not_found", "payable")
+    keys = ("transfers", "found", "paid", "policies", "awaiting", "pending", "not_found", "payable")
     totals = {k: sum(f[k] for f in by_rep) for k in keys}
     return {
         "range": {"start": d0.isoformat(), "end": d1.isoformat()},

@@ -338,7 +338,8 @@ TRANSFER_REP_COLUMNS = [
     ("Transfers",          "transfers"),
     ("Found in TLD",       "found"),
     ("Paid Sales",         "payable"),
-    ("New Policies",       "policies"),
+    ("Verified Policies",  "policies"),
+    ("Awaiting Verification", "awaiting"),
     ("Pending (Sale Made, no policy yet)", "pending"),
     ("Not Found",          "not_found"),
 ]
@@ -354,6 +355,7 @@ TRANSFER_COLUMNS = [
     ("Disposition",    "disposition"),
     ("Carrier",        "carrier"),
     ("Policy Status",  "policy_status"),
+    ("Verified By",    "verified_by"),
     ("Date Sold",      "date_sold"),
     ("Landed Vendor",  "landed_vendor"),
     ("Line",           "line"),
@@ -373,7 +375,7 @@ def build_transfers(data):
     ws.append(["Fronter Transfer Check — DialedIN transfers matched to TLD"])
     ws.append([f"Transfers: {rng.get('start', '')} to {rng.get('end', '')}  ·  "
                f"checked {data.get('checked_at', '')}"])
-    ws.append(["Paid = a new policy created on/after the transfer day. "
+    ws.append(["Paid = a new policy created on/after the transfer day and verified by a manager. "
                + ("Paid once per transfer." if data.get("pay_once") else "Paid per new policy.")
                + " Pending = agent marked Sale Made but no policy entered yet."])
     ws.append([])

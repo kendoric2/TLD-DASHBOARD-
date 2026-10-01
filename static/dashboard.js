@@ -1429,7 +1429,7 @@ let xferRepSortKey = "payable", xferRepSortDir = -1;
 let xferSortKey = "transfer_time", xferSortDir = -1;
 
 const xferEsc = v => String(v == null ? "" : v).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const XFER_NUMERIC = new Set(["transfers", "found", "payable", "pending", "not_found", "policies"]);
+const XFER_NUMERIC = new Set(["transfers", "found", "payable", "awaiting", "pending", "not_found", "policies"]);
 
 function xferSort(rows, key, dir){
   return [...(rows || [])].sort((a, b) => {
@@ -1484,15 +1484,17 @@ function renderTransferCheck(){
   $("#xferKpis").innerHTML =
       card("Transfers", (t.transfers || 0).toLocaleString(), `${d.range.start} to ${d.range.end}`)
     + card("Paid Sales", (t.payable || 0).toLocaleString(),
-           `new policy after transfer · ${pct(t.payable, t.transfers)} of transfers`
+           `verified new policy · ${pct(t.payable, t.transfers)} of transfers`
            + (d.pay_once ? "" : " · paid per policy"), "#00A248")
-    + card("Pending", (t.pending || 0).toLocaleString(), "Sale Made, policy not entered yet", "#B7791F")
+    + card("Awaiting Verification", (t.awaiting || 0).toLocaleString(), "policy entered, not verified by a manager yet",
+           t.awaiting ? "#B7791F" : "")
+    + card("Pending", (t.pending || 0).toLocaleString(), "Sale Made, policy not entered yet", t.pending ? "#B7791F" : "")
     + card("Not Found", (t.not_found || 0).toLocaleString(), "no matching call in TLD — check by hand",
            t.not_found ? "#E2574C" : "");
   $("#xferSummary").innerHTML = `<b>${(t.transfers || 0).toLocaleString()}</b> transfers from
     <b>${(d.by_rep || []).length}</b> fronters · checked ${xferEsc(d.checked_at)} ·
     ${d.pay_once ? "paid once per transfer" : "paid per new policy"}.
-    Re-upload the same file later to pick up pending policies.`;
+    Re-upload the same file later to pick up policies entered or verified since.`;
   $("#xferRepWrap").hidden = false;
   $("#xferDetailTitle").hidden = false;
   $("#xferDetailCard").hidden = false;
@@ -1512,12 +1514,14 @@ function renderXferReps(){
       <td class="num">${n(r.transfers)}</td>
       <td class="num">${n(r.found)}</td>
       <td class="num" style="font-weight:700;color:#00A248">${n(r.payable)}</td>
+      <td class="num">${n(r.awaiting)}</td>
       <td class="num">${n(r.pending)}</td>
       <td class="num"${r.not_found ? ' style="color:#E2574C"' : ""}>${n(r.not_found)}</td>
     </tr>`).join("");
   const t = d.totals || {};
   $("#xferRepTotals").innerHTML = `<tr><td><b>Total</b></td><td class="num"><b>${(t.transfers||0).toLocaleString()}</b></td>
     <td class="num"><b>${(t.found||0).toLocaleString()}</b></td><td class="num"><b>${(t.payable||0).toLocaleString()}</b></td>
+    <td class="num"><b>${(t.awaiting||0).toLocaleString()}</b></td>
     <td class="num"><b>${(t.pending||0).toLocaleString()}</b></td><td class="num"><b>${(t.not_found||0).toLocaleString()}</b></td></tr>`;
   document.querySelectorAll("#xferReps tr").forEach(tr => tr.addEventListener("click", () => {
     const rep = tr.getAttribute("data-rep");
@@ -1535,7 +1539,8 @@ function renderXferRows(){
   rows = xferSort(rows, xferSortKey, xferSortDir);
   $("#xferClearRep").hidden = !xferRep;
   $("#xferDetailCount").textContent = ` · ${rows.length.toLocaleString()}` + (xferRep ? ` for ${xferRep}` : "");
-  const cls = {"Paid": "paid", "Pending": "pending", "No sale": "nosale", "Not found": "notfound"};
+  const cls = {"Paid": "paid", "Awaiting verification": "pending", "Pending": "pending",
+               "No sale": "nosale", "Not found": "notfound"};
   const dash = '<span class="dash">—</span>';
   $("#xferRows").innerHTML = rows.length ? rows.map(r => `
     <tr>
@@ -1549,9 +1554,10 @@ function renderXferRows(){
       <td>${xferEsc(r.disposition) || dash}</td>
       <td title="${xferEsc(r.policy_status)}">${xferEsc(r.carrier) || dash}</td>
       <td>${xferEsc(r.date_sold) || dash}</td>
+      <td>${xferEsc(r.verified_by) || dash}</td>
       <td title="${xferEsc(r.line)}">${xferEsc(r.landed_vendor) || dash}</td>
     </tr>`).join("")
-    : '<tr><td colspan="11" class="dash" style="padding:14px">No transfers match this filter.</td></tr>';
+    : '<tr><td colspan="12" class="dash" style="padding:14px">No transfers match this filter.</td></tr>';
 }
 
 document.querySelectorAll("th[data-xrsort]").forEach(th => th.addEventListener("click", () => {
