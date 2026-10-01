@@ -814,9 +814,9 @@ function toggleBoard(){
 /* ===== Agent Detail tab — every deal a person closed or enrolled, with the SEP ===== */
 function showTab(which){
   const views = {dashboard: "#viewDashboard", detail: "#viewDetail", vendors: "#viewVendors",
-                live: "#viewLive"};
+                live: "#viewLive", transfers: "#viewTransfers"};
   const tabs = {dashboard: "#tabDashboard", detail: "#tabDetail", vendors: "#tabVendors",
-               live: "#tabLive"};
+               live: "#tabLive", transfers: "#tabTransfers"};
   Object.keys(views).forEach(k => {
     $(views[k]).hidden = (k !== which);
     $(tabs[k]).classList.toggle("active", k === which);
@@ -1302,6 +1302,7 @@ $("#tabDashboard").addEventListener("click", () => showTab("dashboard"));
 $("#tabDetail").addEventListener("click", () => showTab("detail"));
 $("#tabVendors").addEventListener("click", () => showTab("vendors"));
 $("#tabLive").addEventListener("click", () => showTab("live"));
+$("#tabTransfers").addEventListener("click", () => showTab("transfers"));
 $("#vendorApply").addEventListener("click", loadVendors);
 $("#vendorPick").addEventListener("change", loadVendors);
 $("#vendorExport").addEventListener("click", () => {
@@ -1416,3 +1417,158 @@ initDatePickers();
   setPicker(fpById["boardEnd"], "boardEnd", today);
 })();
 load();
+
+
+/* ===== Transfer Check tab — DialedIN fronter transfers matched against TLD =====
+   Upload the export; the server matches each phone to its TLD lead, inbound call and any
+   NEW policy created on/after the transfer day (that's what pays the fronter). Results
+   come back once and are sorted / filtered here without refetching. */
+let xferData = null;                                   // last check payload (incl. token for export)
+let xferRep = null;                                    // fronter selected in the summary table
+let xferRepSortKey = "payable", xferRepSortDir = -1;
+let xferSortKey = "transfer_time", xferSortDir = -1;
+
+const xferEsc = v => String(v == null ? "" : v).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const XFER_NUMERIC = new Set(["transfers", "found", "payable", "pending", "not_found", "policies"]);
+
+function xferSort(rows, key, dir){
+  return [...(rows || [])].sort((a, b) => {
+    const x = a[key], y = b[key];
+    if (XFER_NUMERIC.has(key)) return dir * ((Number(x) || 0) - (Number(y) || 0));
+    const xb = x === "" || x == null, yb = y === "" || y == null;
+    if (xb !== yb) return xb ? 1 : -1;                 // blanks last, either direction
+    if (xb && yb) return 0;
+    if (key === "lead_id") return dir * ((Number(x) || 0) - (Number(y) || 0));
+    return dir * String(x).localeCompare(String(y));
+  });
+}
+function xferArrows(attr, activeKey, dir){
+  document.querySelectorAll(`th[${attr}]`).forEach(th => {
+    if (!th.dataset.label) th.dataset.label = th.textContent.trim();
+    const on = th.getAttribute(attr) === activeKey;
+    th.classList.toggle("sorted", on);
+    th.textContent = th.dataset.label + (on ? (dir === 1 ? " ▲" : " ▼") : "");
+  });
+}
+
+async function runTransferCheck(){
+  const file = $("#xferFile").files[0];
+  const sum = $("#xferSummary");
+  if (!file){ sum.textContent = "Choose the DialedIN export file first."; return; }
+  sum.textContent = `Checking ${file.name} against TLD… (a few seconds for a few hundred transfers)`;
+  $("#xferRun").disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const d = await fetch("/api/transfer_check", {method: "POST", body: fd}).then(r => r.json());
+    if (d.error){ sum.textContent = d.error; return; }
+    xferData = d;
+    xferRep = null;
+    renderTransferCheck();
+  } catch (err){
+    sum.textContent = "Could not run the transfer check: " + err;
+  } finally {
+    $("#xferRun").disabled = false;
+  }
+}
+
+function renderTransferCheck(){
+  const d = xferData;
+  if (!d) return;
+  const t = d.totals || {};
+  const pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
+  const card = (label, val, note, color) =>
+    `<div class="kpi"><div class="label">${label}</div>
+     <div class="value"${color ? ` style="color:${color}"` : ""}>${val}</div>
+     <div class="delta note">${note || ""}</div></div>`;
+  $("#xferKpis").innerHTML =
+      card("Transfers", (t.transfers || 0).toLocaleString(), `${d.range.start} to ${d.range.end}`)
+    + card("Paid Sales", (t.payable || 0).toLocaleString(),
+           `new policy after transfer · ${pct(t.payable, t.transfers)} of transfers`
+           + (d.pay_once ? "" : " · paid per policy"), "#00A248")
+    + card("Pending", (t.pending || 0).toLocaleString(), "Sale Made, policy not entered yet", "#B7791F")
+    + card("Not Found", (t.not_found || 0).toLocaleString(), "no matching call in TLD — check by hand",
+           t.not_found ? "#E2574C" : "");
+  $("#xferSummary").innerHTML = `<b>${(t.transfers || 0).toLocaleString()}</b> transfers from
+    <b>${(d.by_rep || []).length}</b> fronters · checked ${xferEsc(d.checked_at)} ·
+    ${d.pay_once ? "paid once per transfer" : "paid per new policy"}.
+    Re-upload the same file later to pick up pending policies.`;
+  $("#xferRepWrap").hidden = false;
+  $("#xferDetailTitle").hidden = false;
+  $("#xferDetailCard").hidden = false;
+  $("#xferExport").hidden = false;
+  renderXferReps();
+  renderXferRows();
+}
+
+function renderXferReps(){
+  const d = xferData;
+  xferArrows("data-xrsort", xferRepSortKey, xferRepSortDir);
+  const rows = xferSort(d.by_rep, xferRepSortKey, xferRepSortDir);
+  const n = v => v ? Number(v).toLocaleString() : '<span class="dash">0</span>';
+  $("#xferReps").innerHTML = rows.map(r => `
+    <tr data-rep="${xferEsc(r.rep)}"${r.rep === xferRep ? ' class="sel"' : ""}>
+      <td>${xferEsc(r.rep)}</td>
+      <td class="num">${n(r.transfers)}</td>
+      <td class="num">${n(r.found)}</td>
+      <td class="num" style="font-weight:700;color:#00A248">${n(r.payable)}</td>
+      <td class="num">${n(r.pending)}</td>
+      <td class="num"${r.not_found ? ' style="color:#E2574C"' : ""}>${n(r.not_found)}</td>
+    </tr>`).join("");
+  const t = d.totals || {};
+  $("#xferRepTotals").innerHTML = `<tr><td><b>Total</b></td><td class="num"><b>${(t.transfers||0).toLocaleString()}</b></td>
+    <td class="num"><b>${(t.found||0).toLocaleString()}</b></td><td class="num"><b>${(t.payable||0).toLocaleString()}</b></td>
+    <td class="num"><b>${(t.pending||0).toLocaleString()}</b></td><td class="num"><b>${(t.not_found||0).toLocaleString()}</b></td></tr>`;
+  document.querySelectorAll("#xferReps tr").forEach(tr => tr.addEventListener("click", () => {
+    const rep = tr.getAttribute("data-rep");
+    xferRep = (xferRep === rep) ? null : rep;          // click again to clear
+    renderXferReps();
+    renderXferRows();
+  }));
+}
+
+function renderXferRows(){
+  const d = xferData;
+  xferArrows("data-xsort", xferSortKey, xferSortDir);
+  const res = $("#xferResultFilter").value;
+  let rows = (d.rows || []).filter(r => (!xferRep || r.rep === xferRep) && (!res || r.result === res));
+  rows = xferSort(rows, xferSortKey, xferSortDir);
+  $("#xferClearRep").hidden = !xferRep;
+  $("#xferDetailCount").textContent = ` · ${rows.length.toLocaleString()}` + (xferRep ? ` for ${xferRep}` : "");
+  const cls = {"Paid": "paid", "Pending": "pending", "No sale": "nosale", "Not found": "notfound"};
+  const dash = '<span class="dash">—</span>';
+  $("#xferRows").innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${xferEsc(r.transfer_time)}</td>
+      <td>${xferEsc(r.rep)}</td>
+      <td>${xferEsc(r.campaign) || dash}</td>
+      <td>…${xferEsc(r.phone_last4)}</td>
+      <td>${xferEsc(r.lead_id) || dash}</td>
+      <td><span class="xres ${cls[r.result] || ""}">${xferEsc(r.result)}</span>${r.policies > 1 ? ` <span class="dash" title="new policies on this transfer">×${r.policies}</span>` : ""}</td>
+      <td>${xferEsc(r.agent) || dash}</td>
+      <td>${xferEsc(r.disposition) || dash}</td>
+      <td title="${xferEsc(r.policy_status)}">${xferEsc(r.carrier) || dash}</td>
+      <td>${xferEsc(r.date_sold) || dash}</td>
+      <td title="${xferEsc(r.line)}">${xferEsc(r.landed_vendor) || dash}</td>
+    </tr>`).join("")
+    : '<tr><td colspan="11" class="dash" style="padding:14px">No transfers match this filter.</td></tr>';
+}
+
+document.querySelectorAll("th[data-xrsort]").forEach(th => th.addEventListener("click", () => {
+  const k = th.getAttribute("data-xrsort");
+  if (xferRepSortKey === k) xferRepSortDir *= -1;
+  else { xferRepSortKey = k; xferRepSortDir = (k === "rep") ? 1 : -1; }
+  if (xferData) renderXferReps();
+}));
+document.querySelectorAll("th[data-xsort]").forEach(th => th.addEventListener("click", () => {
+  const k = th.getAttribute("data-xsort");
+  if (xferSortKey === k) xferSortDir *= -1;
+  else { xferSortKey = k; xferSortDir = (k === "transfer_time" || k === "date_sold" || k === "lead_id") ? -1 : 1; }
+  if (xferData) renderXferRows();
+}));
+$("#xferRun").addEventListener("click", runTransferCheck);
+$("#xferResultFilter").addEventListener("change", () => { if (xferData) renderXferRows(); });
+$("#xferClearRep").addEventListener("click", () => { xferRep = null; renderXferReps(); renderXferRows(); });
+$("#xferExport").addEventListener("click", () => {
+  if (xferData && xferData.token) window.location = `/api/transfer_check/export?token=${xferData.token}`;
+});

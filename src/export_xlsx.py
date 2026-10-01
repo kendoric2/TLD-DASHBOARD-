@@ -331,3 +331,71 @@ def build_state_vendor_report(start, end, data):
     wb.save(buf)
     buf.seek(0)
     return buf, f"StatePerformance_{start}_{end}.xlsx"
+
+
+TRANSFER_REP_COLUMNS = [
+    ("Fronter",            "rep"),
+    ("Transfers",          "transfers"),
+    ("Found in TLD",       "found"),
+    ("Paid Sales",         "payable"),
+    ("New Policies",       "policies"),
+    ("Pending (Sale Made, no policy yet)", "pending"),
+    ("Not Found",          "not_found"),
+]
+
+TRANSFER_COLUMNS = [
+    ("Fronter",        "rep"),
+    ("Campaign",       "campaign"),
+    ("Transfer Time",  "transfer_time"),
+    ("Phone (last 4)", "phone_last4"),
+    ("Lead ID",        "lead_id"),
+    ("Result",         "result"),
+    ("Agent",          "agent"),
+    ("Disposition",    "disposition"),
+    ("Carrier",        "carrier"),
+    ("Policy Status",  "policy_status"),
+    ("Date Sold",      "date_sold"),
+    ("Landed Vendor",  "landed_vendor"),
+    ("Line",           "line"),
+    ("TLD Call Time",  "call_time"),
+]
+
+
+def build_transfers(data):
+    """Transfer Check for payroll: a per-fronter summary sheet, then every transfer as the
+    backup. Paid = a NEW policy created on/after the transfer day."""
+    rng = data.get("range") or {}
+    t = data.get("totals") or {}
+    wb = Workbook()
+
+    ws = wb.active
+    ws.title = "Payroll Summary"
+    ws.append(["Fronter Transfer Check — DialedIN transfers matched to TLD"])
+    ws.append([f"Transfers: {rng.get('start', '')} to {rng.get('end', '')}  ·  "
+               f"checked {data.get('checked_at', '')}"])
+    ws.append(["Paid = a new policy created on/after the transfer day. "
+               + ("Paid once per transfer." if data.get("pay_once") else "Paid per new policy.")
+               + " Pending = agent marked Sale Made but no policy entered yet."])
+    ws.append([])
+    ws.append([h for h, _k in TRANSFER_REP_COLUMNS])
+    for r in data.get("by_rep") or []:
+        ws.append([r.get(k, "") for _h, k in TRANSFER_REP_COLUMNS])
+    ws.append([])
+    ws.append(["TOTAL"] + [t.get(k, 0) for _h, k in TRANSFER_REP_COLUMNS[1:]])
+
+    wd = wb.create_sheet("Transfer Detail")
+    wd.append([h for h, _k in TRANSFER_COLUMNS])
+    for r in data.get("rows") or []:
+        line = []
+        for _h, key in TRANSFER_COLUMNS:
+            val = r.get(key)
+            val = "" if val is None else val
+            if key == "lead_id" and str(val).strip().isdigit():
+                val = int(str(val))
+            line.append(val)
+        wd.append(line)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf, f"TransferCheck_{rng.get('start', '')}_{rng.get('end', '')}.xlsx"

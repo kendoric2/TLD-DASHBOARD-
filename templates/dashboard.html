@@ -52,6 +52,7 @@
   <button type="button" class="tab" id="tabDetail">Agent Detail</button>
   <button type="button" class="tab" id="tabVendors">Vendors</button>
   <button type="button" class="tab" id="tabLive">Live Agents</button>
+  <button type="button" class="tab" id="tabTransfers">Transfer Check</button>
 </nav>
 
 <main>
@@ -168,6 +169,54 @@
       <div class="kpis vendor-cost" id="liveCounts"></div>
       <div class="table-scroll" style="max-height:620px">
         <div class="live-grid" id="liveRows"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="viewTransfers" hidden>
+    <div class="section-title">Transfer Check
+      <span class="hint">&mdash; upload a DialedIN export to see which fronter transfers turned into a sale in TLD</span>
+    </div>
+    <div class="card">
+      <div class="detail-summary" id="xferSummary">
+        Export the transferred leads from DialedIN (CSV or Excel) and upload it here. Each transfer is matched to its TLD lead,
+        the inbound call, and any <b style="font-size:13px">new</b> policy created on or after the transfer day &mdash; that's what pays.
+        The file is only read in memory; nothing from it is saved.
+      </div>
+      <span class="detail-controls" style="margin-bottom:10px">
+        <input type="file" id="xferFile" accept=".csv,.xlsx" aria-label="DialedIN export file" />
+        <button class="btn dark" id="xferRun">Check transfers</button>
+        <button class="btn export" id="xferExport" hidden title="Payroll summary + every transfer, as an Excel file">&#8681; Export Excel</button>
+      </span>
+      <div class="kpis vendor-cost" id="xferKpis" style="grid-template-columns:repeat(4,1fr)"></div>
+      <div class="table-scroll" id="xferRepWrap" style="max-height:440px" hidden>
+        <table>
+          <thead><tr><th data-xrsort="rep">Fronter</th><th class="num" data-xrsort="transfers">Transfers</th><th class="num" data-xrsort="found">Found in TLD</th><th class="num" data-xrsort="payable">Paid Sales</th><th class="num" data-xrsort="pending">Pending</th><th class="num" data-xrsort="not_found">Not Found</th></tr></thead>
+          <tbody id="xferReps"></tbody>
+          <tfoot id="xferRepTotals"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-title" id="xferDetailTitle" hidden>Transfers<span class="agentCount" id="xferDetailCount"></span>
+      <span class="hint">&mdash; click a fronter above to filter, click a column to sort</span>
+    </div>
+    <div class="card" id="xferDetailCard" hidden>
+      <span class="detail-controls" style="margin-bottom:10px">
+        <select class="detail-agent" id="xferResultFilter" aria-label="Filter by result">
+          <option value="">All results</option>
+          <option value="Paid">Paid</option>
+          <option value="Pending">Pending</option>
+          <option value="No sale">No sale</option>
+          <option value="Not found">Not found</option>
+        </select>
+        <button class="btn dark" id="xferClearRep" hidden>Show all fronters</button>
+      </span>
+      <div class="table-scroll" style="max-height:560px">
+        <table>
+          <thead><tr><th data-xsort="transfer_time">Transfer Time</th><th data-xsort="rep">Fronter</th><th data-xsort="campaign">Campaign</th><th data-xsort="phone_last4">Phone</th><th data-xsort="lead_id">Lead ID</th><th data-xsort="result">Result</th><th data-xsort="agent">Agent</th><th data-xsort="disposition">Disposition</th><th data-xsort="carrier">Carrier</th><th data-xsort="date_sold">Date Sold</th><th data-xsort="landed_vendor">Landed Vendor</th></tr></thead>
+          <tbody id="xferRows"></tbody>
+        </table>
       </div>
     </div>
   </section>

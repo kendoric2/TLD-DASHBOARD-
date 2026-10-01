@@ -485,6 +485,55 @@ def api_live_agents():
         return jsonify({"error": f"Could not load live agents: {e}"}), 500
 
 
+# Transfer Check results, kept IN MEMORY ONLY so the Export button doesn't re-run the
+# lookups. The DialedIN file carries MBI/DOB, so it is never written to disk; results hold
+# only phone last-4s. A handful of recent runs, gone when the app stops.
+_TRANSFER_RUNS = {}
+_TRANSFER_RUNS_MAX = 5
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024     # uploads: 25 MB is plenty for a CSV
+
+
+@app.route("/api/transfer_check", methods=["POST"])
+def api_transfer_check():
+    """Upload a DialedIN export; match every transfer to its TLD lead, call and policies."""
+    if not config.have_creds():
+        return jsonify({"error": "Demo mode — add your TLDCRM credentials to check transfers."}), 400
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "Choose the DialedIN export file first."}), 400
+    try:
+        import uuid
+        import transfer_check
+        transfers = transfer_check.parse_export(f.read(), f.filename)
+        data = transfer_check.check(transfers)
+        data["checked_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        token = uuid.uuid4().hex
+        _TRANSFER_RUNS[token] = data
+        while len(_TRANSFER_RUNS) > _TRANSFER_RUNS_MAX:
+            _TRANSFER_RUNS.pop(next(iter(_TRANSFER_RUNS)))
+        return jsonify(dict(data, token=token))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Transfer check failed: {e}"}), 500
+
+
+@app.route("/api/transfer_check/export")
+def api_transfer_check_export():
+    """Payroll Excel for the last Transfer Check run (summary sheet + every transfer)."""
+    data = _TRANSFER_RUNS.get(request.args.get("token") or "")
+    if not data:
+        return jsonify({"error": "That check has expired — upload the file again."}), 404
+    try:
+        import export_xlsx
+        buf, fname = export_xlsx.build_transfers(data)
+        return send_file(
+            buf, as_attachment=True, download_name=fname,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except Exception as e:
+        return jsonify({"error": f"Export failed: {e}"}), 500
+
+
 @app.route("/api/sales_board")
 def api_sales_board():
     """Combined sales leaderboard (agents + fronters) for the board's OWN date range."""
