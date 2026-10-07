@@ -504,8 +504,18 @@ def api_transfer_check():
     try:
         import uuid
         import transfer_check
+
+        def _d(name):
+            v = (request.form.get(name) or "").strip()
+            if not v:
+                return None
+            try:
+                return datetime.date.fromisoformat(v)
+            except ValueError:
+                raise ValueError(f"Could not read the {name} date '{v}'. Use YYYY-MM-DD.")
+
         transfers = transfer_check.parse_export(f.read(), f.filename)
-        data = transfer_check.check(transfers)
+        data = transfer_check.check(transfers, start=_d("start"), end=_d("end"))
         data["checked_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         token = uuid.uuid4().hex
         _TRANSFER_RUNS[token] = data

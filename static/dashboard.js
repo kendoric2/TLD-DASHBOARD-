@@ -1461,6 +1461,9 @@ async function runTransferCheck(){
   try {
     const fd = new FormData();
     fd.append("file", file);
+    // The pay week wins over the file's own dates — see the note in transfer_check.check().
+    fd.append("start", $("#xferStart").value || "");
+    fd.append("end", $("#xferEnd").value || "");
     const d = await fetch("/api/transfer_check", {method: "POST", body: fd}).then(r => r.json());
     if (d.error){ sum.textContent = d.error; return; }
     xferData = d;
@@ -1492,10 +1495,18 @@ function renderTransferCheck(){
     + card("Pending", (t.pending || 0).toLocaleString(), "Sale Made, policy not entered yet", t.pending ? "#B7791F" : "")
     + card("Not Found", (t.not_found || 0).toLocaleString(), "no matching call in TLD — check by hand",
            t.not_found ? "#E2574C" : "");
+  const fr = d.file_range || {};
+  const dropNote = d.dropped
+    ? `<div style="margin-top:6px;color:#B7791F"><b>${d.dropped.toLocaleString()}</b> row${d.dropped === 1 ? "" : "s"}
+       in the file fell outside ${xferEsc(d.range.start)} to ${xferEsc(d.range.end)} and were ignored
+       &mdash; the file itself covers ${xferEsc(fr.start)} to ${xferEsc(fr.end)}. Those transfers belong to another pay week.</div>`
+    : (fr.start && (fr.start !== d.range.start || fr.end !== d.range.end)
+        ? `<div style="margin-top:6px" class="dash">File covers ${xferEsc(fr.start)} to ${xferEsc(fr.end)}.</div>` : "");
   $("#xferSummary").innerHTML = `<b>${(t.transfers || 0).toLocaleString()}</b> transfers from
-    <b>${(d.by_rep || []).length}</b> fronters · checked ${xferEsc(d.checked_at)} ·
+    <b>${(d.by_rep || []).length}</b> fronters · ${xferEsc(d.range.start)} to ${xferEsc(d.range.end)} ·
+    checked ${xferEsc(d.checked_at)} ·
     ${d.pay_once ? "paid once per transfer" : "paid per new policy"}.
-    Re-upload the same file later to pick up policies entered or verified since.`;
+    Re-upload the same file later to pick up policies entered or verified since.${dropNote}`;
   $("#xferRepWrap").hidden = false;
   $("#xferDetailTitle").hidden = false;
   $("#xferDetailCard").hidden = false;

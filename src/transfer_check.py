@@ -139,13 +139,36 @@ def _chunks(seq, n=CHUNK):
         yield seq[i:i + n]
 
 
-def check(transfers):
-    """Run the three lookups and score every transfer. Returns the payload the tab shows."""
-    phones = sorted({t["phone"] for t in transfers})
+def check(transfers, start=None, end=None):
+    """Run the three lookups and score every transfer. Returns the payload the tab shows.
+
+    start/end (datetime.date, optional) bound the run. DialedIN's export does NOT reliably
+    honour the date range you pick in DialedIN — a 9/28-10/4 export came back carrying 267
+    rows dated 10/6 and 10/7 — so when a range is given it wins over the file: rows outside
+    it are dropped, and the credit window closes at `end`. With no range given the file's own
+    min/max CallDate is used, which is the old behaviour and trusts the export.
+    """
     whens = [t["when"] for t in transfers if t["when"]]
     if not whens:
         raise ValueError("None of the CallDate values could be read as a date.")
-    d0, d1 = min(whens).date(), max(whens).date()
+    file_d0, file_d1 = min(whens).date(), max(whens).date()
+
+    dropped = 0
+    if start or end:
+        d0 = start or file_d0
+        d1 = end or file_d1
+        if d0 > d1:
+            raise ValueError("The start date is after the end date.")
+        kept = [t for t in transfers if t["when"] and d0 <= t["when"].date() <= d1]
+        dropped = len(transfers) - len(kept)
+        if not kept:
+            raise ValueError(f"No transfers fall in {d0} to {d1}. This file covers "
+                             f"{file_d0} to {file_d1} ({len(transfers)} rows).")
+        transfers = kept
+    else:
+        d0, d1 = file_d0, file_d1
+
+    phones = sorted({t["phone"] for t in transfers})
 
     # 1. every TLD lead for each phone
     leads_by_phone = defaultdict(list)
@@ -286,6 +309,11 @@ def check(transfers):
     totals = {k: sum(f[k] for f in by_rep) for k in keys}
     return {
         "range": {"start": d0.isoformat(), "end": d1.isoformat()},
+        # What the file itself covered, and how many rows the range threw away. DialedIN
+        # filters its export on the lead's `Date`, but writes `CallDate` as the LAST call
+        # attempt, so a file "for" one week routinely carries later transfer activity.
+        "file_range": {"start": file_d0.isoformat(), "end": file_d1.isoformat()},
+        "dropped": dropped,
         "pay_once": PAY_ONCE_PER_TRANSFER,
         "totals": totals,
         "by_rep": by_rep,

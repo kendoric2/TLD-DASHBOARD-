@@ -373,8 +373,13 @@ def build_transfers(data):
     ws = wb.active
     ws.title = "Payroll Summary"
     ws.append(["Fronter Transfer Check — DialedIN transfers matched to TLD"])
-    ws.append([f"Transfers: {rng.get('start', '')} to {rng.get('end', '')}  ·  "
-               f"checked {data.get('checked_at', '')}"])
+    fr = data.get("file_range") or {}
+    line = (f"Transfers: {rng.get('start', '')} to {rng.get('end', '')}  ·  "
+            f"checked {data.get('checked_at', '')}")
+    if data.get("dropped"):
+        line += (f"  ·  {data['dropped']} row(s) outside this pay week were ignored "
+                 f"(file covers {fr.get('start', '')} to {fr.get('end', '')})")
+    ws.append([line])
     ws.append([f"Paid = a new policy created on/after the transfer day, on/before "
                f"{rng.get('end', '')}, and verified by a manager. "
                + ("Paid once per transfer." if data.get("pay_once") else "Paid per new policy.")
