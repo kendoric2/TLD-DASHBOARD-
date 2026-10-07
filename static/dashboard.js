@@ -1510,11 +1510,25 @@ function renderTransferCheck(){
        &mdash; the file itself covers ${xferEsc(fr.start)} to ${xferEsc(fr.end)}. Those transfers belong to another pay week.</div>`
     : (fr.start && (fr.start !== d.range.start || fr.end !== d.range.end)
         ? `<div style="margin-top:6px" class="dash">File covers ${xferEsc(fr.start)} to ${xferEsc(fr.end)}.</div>` : "");
+  // Guard: ignored rows that ALREADY have a sale. Without it, paid work that landed outside
+  // the pay week disappears silently. After the week -> next week's run; before -> last week's.
+  const ds = d.dropped_sales || {};
+  const dsSide = (k, verb) => ds[k]
+    ? `<b>${ds[k].transfers.toLocaleString()}</b> transferred ${verb} this week
+       (${xferEsc(ds[k].first)}${ds[k].last !== ds[k].first ? " to " + xferEsc(ds[k].last) : ""}`
+      + `${ds[k].verified < ds[k].transfers ? `, ${ds[k].verified.toLocaleString()} verified so far` : ""})`
+      + (k === "after" ? " &mdash; include them in next week's check" : " &mdash; make sure last week's check included them")
+    : "";
+  const dsNote = ds.transfers
+    ? `<div style="margin-top:6px;color:#E2574C;font-weight:600">&#9888; ${ds.transfers.toLocaleString()} of the ignored
+       transfer${ds.transfers === 1 ? "" : "s"} already ${ds.transfers === 1 ? "has a sale" : "have sales"}:
+       ${[dsSide("before", "before"), dsSide("after", "after")].filter(Boolean).join("; ")}.</div>`
+    : "";
   $("#xferSummary").innerHTML = `<b>${(t.transfers || 0).toLocaleString()}</b> transfers from
     <b>${(d.by_rep || []).length}</b> fronters · ${xferEsc(d.range.start)} to ${xferEsc(d.range.end)} ·
     checked ${xferEsc(d.checked_at)} ·
     ${d.pay_once ? "paid once per transfer" : "paid per new policy"}.
-    Re-upload the same file later to pick up policies entered or verified since.${lineNote}${dropNote}`;
+    Re-upload the same file later to pick up policies entered or verified since.${lineNote}${dropNote}${dsNote}`;
   $("#xferRepWrap").hidden = false;
   $("#xferDetailTitle").hidden = false;
   $("#xferDetailCard").hidden = false;

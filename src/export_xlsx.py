@@ -383,6 +383,17 @@ def build_transfers(data):
         line += (f"  ·  {data['dropped']} row(s) outside this pay week were ignored "
                  f"(file covers {fr.get('start', '')} to {fr.get('end', '')})")
     ws.append([line])
+    ds = data.get("dropped_sales") or {}
+    if ds.get("transfers"):
+        parts = []
+        for k, verb, todo in (("before", "before", "make sure last week's check included them"),
+                              ("after", "after", "include them in next week's check")):
+            if ds.get(k):
+                g = ds[k]
+                span = g["first"] if g["first"] == g["last"] else f"{g['first']} to {g['last']}"
+                parts.append(f"{g['transfers']} transferred {verb} this week ({span}) — {todo}")
+        ws.append([f"WARNING: {ds['transfers']} ignored transfer(s) already have a sale: "
+                   + "; ".join(parts) + "."])
     ws.append([f"Paid = a new policy created on/after the transfer day, on/before "
                f"{rng.get('end', '')}, and verified by a manager. "
                + ("Paid once per transfer." if data.get("pay_once") else "Paid per new policy.")

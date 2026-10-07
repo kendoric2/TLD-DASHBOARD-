@@ -170,6 +170,76 @@ def _chunks(seq, n=CHUNK):
         yield seq[i:i + n]
 
 
+def _leads_by_phone(phones):
+    """phone -> [lead_id, …] for every TLD lead on each phone (leads takes a phone list)."""
+    out = defaultdict(list)
+    for batch in _chunks(phones):
+        resp = config.egress_get("leads", {
+            "columns": ["lead_id", "phone", "date_created"],
+            "phone": batch, "limit": len(batch) * 50}, timeout=180)
+        for r in _rows(resp):
+            p = _phone10(r.get("phone"))
+            if p and r.get("lead_id"):
+                out[p].append(str(r["lead_id"]).strip())
+    return out
+
+
+def _policies_by_lead(lead_ids):
+    """lead_id -> [policy, …] — every policy ever written on those leads (no date filter)."""
+    out = defaultdict(list)
+    for batch in _chunks(lead_ids, 50):
+        resp = config.egress_get("policies", {
+            "columns": ["policy_id", "lead_id", "date_created", "date_sold", "status_name",
+                        "carrier_name", "agent_name", "verified", "verifier_name"],
+            "lead_id": batch, "limit": 20000}, timeout=180)
+        seen = set()
+        for r in _rows(resp):
+            pid = str(r.get("policy_id") or "")
+            if pid and pid in seen:
+                continue
+            seen.add(pid)
+            out[str(r.get("lead_id") or "").strip()].append(r)
+    return out
+
+
+def _is_live(p):
+    return str(p.get("status_name") or "").strip().lower() not in UNPAID_STATUSES
+
+
+def _is_verified(p):
+    return str(p.get("verified") or "").strip() in ("1", "1.0", "True", "true")
+
+
+def _dropped_sales(dropped, d0, d1):
+    """Guard for the pay week: do any transfers the range threw away already have a sale?
+
+    Dropped rows aren't scored, so without this a sale whose transfer landed outside the
+    week (the 267 Manhattan Life rows of 10/6-10/7, carrying 17 sales) disappears without a
+    word. Same rule as a paid sale — a live new policy created on/after the transfer day —
+    but with no upper cap, because these belong to some OTHER week's run. Split by side:
+    after the week = belongs to the next run; before = should have been in the last one."""
+    if not dropped:
+        return None
+    leads = _leads_by_phone(sorted({t["phone"] for t in dropped}))
+    ids = sorted({lid for v in leads.values() for lid in v} | {t["tld_id"] for t in dropped if t["tld_id"]})
+    pols = _policies_by_lead(ids)
+    side = {"before": [], "after": []}
+    for t in dropped:
+        lids = set(leads.get(t["phone"], [])) | ({t["tld_id"]} if t["tld_id"] else set())
+        sold = [p for lid in lids for p in pols.get(lid, []) if _is_live(p)
+                and (_parse_dt(p.get("date_created")) or dt.datetime.min).date() >= t["when"].date()]
+        if sold:
+            side["before" if t["when"].date() < d0 else "after"].append(
+                (t["when"].date(), any(_is_verified(p) for p in sold)))
+    out = {}
+    for k, hits in side.items():
+        if hits:
+            days = sorted(h[0] for h in hits)
+            out[k] = {"transfers": len(hits), "verified": sum(1 for h in hits if h[1]),
+                      "first": days[0].isoformat(), "last": days[-1].isoformat()}
+    return {"transfers": sum(v["transfers"] for v in out.values()), **out} if out else {"transfers": 0}
+
+
 def check(transfers, start=None, end=None):
     """Run the three lookups and score every transfer. Returns the payload the tab shows.
 
@@ -177,21 +247,23 @@ def check(transfers, start=None, end=None):
     lead's campaign `Date`, but we read `CallDate` (when the transfer happened) — so a 9/28-10/4
     export came back carrying 267 Manhattan Life rows transferred 10/6-10/7. When a range is
     given it wins over the file: rows outside it are dropped, and the credit window closes at
-    `end`. With no range given the file's own
-    min/max CallDate is used, which is the old behaviour and trusts the export.
+    `end`. With no range given the file's own min/max CallDate is used, which is the old
+    behaviour and trusts the export. Dropped rows that already have a sale are reported in
+    `dropped_sales`, so paid work can never fall out of a pay week silently.
     """
     whens = [t["when"] for t in transfers if t["when"]]
     if not whens:
         raise ValueError("None of the CallDate values could be read as a date.")
     file_d0, file_d1 = min(whens).date(), max(whens).date()
 
-    dropped = 0
+    dropped, dropped_rows = 0, []
     if start or end:
         d0 = start or file_d0
         d1 = end or file_d1
         if d0 > d1:
             raise ValueError("The start date is after the end date.")
         kept = [t for t in transfers if t["when"] and d0 <= t["when"].date() <= d1]
+        dropped_rows = [t for t in transfers if t["when"] and not d0 <= t["when"].date() <= d1]
         dropped = len(transfers) - len(kept)
         if not kept:
             raise ValueError(f"No transfers fall in {d0} to {d1}. This file covers "
@@ -203,15 +275,7 @@ def check(transfers, start=None, end=None):
     phones = sorted({t["phone"] for t in transfers})
 
     # 1. every TLD lead for each phone
-    leads_by_phone = defaultdict(list)
-    for batch in _chunks(phones):
-        resp = config.egress_get("leads", {
-            "columns": ["lead_id", "phone", "date_created"],
-            "phone": batch, "limit": len(batch) * 50}, timeout=180)
-        for r in _rows(resp):
-            p = _phone10(r.get("phone"))
-            if p and r.get("lead_id"):
-                leads_by_phone[p].append(str(r["lead_id"]).strip())
+    leads_by_phone = _leads_by_phone(phones)
 
     # 2. inbound calls from those phones (a day of slack each side)
     calls_by_phone = defaultdict(list)
@@ -230,19 +294,7 @@ def check(transfers, start=None, end=None):
     # 3. every policy on every one of those leads
     lead_ids = sorted({lid for ids in leads_by_phone.values() for lid in ids}
                       | {t["tld_id"] for t in transfers if t["tld_id"]})
-    policies_by_lead = defaultdict(list)
-    for batch in _chunks(lead_ids, 50):
-        resp = config.egress_get("policies", {
-            "columns": ["policy_id", "lead_id", "date_created", "date_sold", "status_name",
-                        "carrier_name", "agent_name", "verified", "verifier_name"],
-            "lead_id": batch, "limit": 20000}, timeout=180)
-        seen = set()
-        for r in _rows(resp):
-            pid = str(r.get("policy_id") or "")
-            if pid and pid in seen:
-                continue
-            seen.add(pid)
-            policies_by_lead[str(r.get("lead_id") or "").strip()].append(r)
+    policies_by_lead = _policies_by_lead(lead_ids)
 
     # Same phone transferred more than once: a policy belongs to the LATEST transfer on or
     # before the day it was created, so two fronters can never both be paid for one sale.
@@ -282,8 +334,8 @@ def check(transfers, start=None, end=None):
             call = best[1] if best else None
 
         new = sorted(credited.get(i, []), key=lambda p: str(p.get("date_created") or ""))
-        live = [p for p in new if str(p.get("status_name") or "").strip().lower() not in UNPAID_STATUSES]
-        paid_pols = [p for p in live if str(p.get("verified") or "").strip() in ("1", "1.0", "True", "true")]
+        live = [p for p in new if _is_live(p)]
+        paid_pols = [p for p in live if _is_verified(p)]
         disposition = str(call.get("status_name") or "").strip() if call else ""
         lead_id = (str(call.get("lead_vendor_lead_code") or "").strip() if call else "") \
             or t["tld_id"] or (leads_by_phone.get(t["phone"]) or [""])[-1]
@@ -376,6 +428,7 @@ def check(transfers, start=None, end=None):
         # attempt, so a file "for" one week routinely carries later transfer activity.
         "file_range": {"start": file_d0.isoformat(), "end": file_d1.isoformat()},
         "dropped": dropped,
+        "dropped_sales": _dropped_sales(dropped_rows, d0, d1),
         "pay_once": PAY_ONCE_PER_TRANSFER,
         "totals": totals,
         "by_rep": by_rep,
