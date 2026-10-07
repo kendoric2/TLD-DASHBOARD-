@@ -198,7 +198,7 @@
       <div class="kpis vendor-cost" id="xferKpis" style="grid-template-columns:repeat(5,1fr)"></div>
       <div class="table-scroll" id="xferRepWrap" style="max-height:440px" hidden>
         <table>
-          <thead><tr><th data-xrsort="rep">Fronter</th><th class="num" data-xrsort="transfers">Transfers</th><th class="num" data-xrsort="found">Found in TLD</th><th class="num" data-xrsort="payable">Paid Sales</th><th class="num" data-xrsort="awaiting">Awaiting Verification</th><th class="num" data-xrsort="pending">Pending</th><th class="num" data-xrsort="not_found">Not Found</th></tr></thead>
+          <thead><tr><th data-xrsort="rep">Fronter</th><th class="num" data-xrsort="transfers">Transfers</th><th class="num" data-xrsort="found">Found in TLD</th><th class="num" data-xrsort="payable">Paid Sales</th><th class="num" data-xrsort="pol_manhattan" title="Verified policies on a Manhattan Life or GTL carrier">&middot; Manhattan</th><th class="num" data-xrsort="pol_mapd" title="Verified policies on any other carrier">&middot; MAPD</th><th class="num" data-xrsort="awaiting">Awaiting Verification</th><th class="num" data-xrsort="pending">Pending</th><th class="num" data-xrsort="not_found">Not Found</th></tr></thead>
           <tbody id="xferReps"></tbody>
           <tfoot id="xferRepTotals"></tfoot>
         </table>
@@ -210,6 +210,12 @@
     </div>
     <div class="card" id="xferDetailCard" hidden>
       <span class="detail-controls" style="margin-bottom:10px">
+        <select class="detail-agent" id="xferLineFilter" aria-label="Filter by product line"
+                title="A sale is grouped by its carrier's line; a transfer that sold nothing falls back to the line its campaign was dialing">
+          <option value="">All product lines</option>
+          <option value="Manhattan Life">Manhattan Life (incl. GTL)</option>
+          <option value="MAPD">MAPD</option>
+        </select>
         <select class="detail-agent" id="xferResultFilter" aria-label="Filter by result">
           <option value="">All results</option>
           <option value="Paid">Paid</option>
@@ -222,7 +228,7 @@
       </span>
       <div class="table-scroll" style="max-height:560px">
         <table>
-          <thead><tr><th data-xsort="transfer_time">Transfer Time</th><th data-xsort="rep">Fronter</th><th data-xsort="campaign">Campaign</th><th data-xsort="phone_last4">Phone</th><th data-xsort="lead_id">Lead ID</th><th data-xsort="result">Result</th><th data-xsort="agent">Agent</th><th data-xsort="disposition">Disposition</th><th data-xsort="carrier">Carrier</th><th data-xsort="date_sold">Date Sold</th><th data-xsort="verified_by">Verified By</th><th data-xsort="landed_vendor">Landed Vendor</th></tr></thead>
+          <thead><tr><th data-xsort="transfer_time">Transfer Time</th><th data-xsort="rep">Fronter</th><th data-xsort="campaign">Campaign</th><th data-xsort="product_line" title="From the sold carrier; falls back to the campaign's line when nothing sold">Line</th><th data-xsort="phone_last4">Phone</th><th data-xsort="lead_id">Lead ID</th><th data-xsort="result">Result</th><th data-xsort="agent">Agent</th><th data-xsort="disposition">Disposition</th><th data-xsort="carrier">Carrier</th><th data-xsort="date_sold">Date Sold</th><th data-xsort="verified_by">Verified By</th><th data-xsort="landed_vendor">Landed Vendor</th></tr></thead>
           <tbody id="xferRows"></tbody>
         </table>
       </div>

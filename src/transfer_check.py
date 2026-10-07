@@ -33,7 +33,7 @@ import csv
 import io
 import re
 import datetime as dt
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import config
 
@@ -50,6 +50,37 @@ MATCH_WINDOW = dt.timedelta(hours=3)
 UNPAID_STATUSES = {"trash", "quoted", "unsold", "cancelled", "canceled", "declined"}
 
 CHUNK = 100
+
+# ---------------------------------------------------------------------------
+# Product line. REPORTING ONLY — it never changes who gets paid. A fronter is paid for
+# whatever their transfer sold, so a Manhattan Life policy sold off the MAPD campaign
+# still pays the MAPD fronter (4 of the 36 sales in the first real file were exactly
+# that). The line is decided by the POLICY'S CARRIER, never by the campaign the fronter
+# was dialing, because the two disagree.
+LINE_MANHATTAN = "Manhattan Life"
+LINE_MAPD = "MAPD"
+
+# Manhattan Life and GTL are tracked together — close enough to the same product.
+# Everything else is MAPD, so a new MAPD carrier needs no code change and can't fall
+# into an untracked gap.
+MANHATTAN_CARRIERS = {"MANHATTAN", "MANHATTAN LIFE", "MANHATTANLIFE", "GTL"}
+
+
+def carrier_line(name):
+    """Carrier name -> product line. '' for a blank carrier."""
+    key = re.sub(r"[^A-Z ]", "", str(name or "").upper()).strip()
+    if not key:
+        return ""
+    return LINE_MANHATTAN if key in MANHATTAN_CARRIERS else LINE_MAPD
+
+
+def campaign_line(name):
+    """DialedIN campaign -> the line it was DIALING for. Only used to label transfers that
+    produced no sale; a sale is always labelled by its carrier."""
+    key = str(name or "").upper()
+    if "MANHATTAN" in key:
+        return LINE_MANHATTAN
+    return LINE_MAPD if "MAPD" in key else ""
 
 # DialedIN column names, with fallbacks in case they rename something.
 COLS = {
@@ -142,10 +173,11 @@ def _chunks(seq, n=CHUNK):
 def check(transfers, start=None, end=None):
     """Run the three lookups and score every transfer. Returns the payload the tab shows.
 
-    start/end (datetime.date, optional) bound the run. DialedIN's export does NOT reliably
-    honour the date range you pick in DialedIN — a 9/28-10/4 export came back carrying 267
-    rows dated 10/6 and 10/7 — so when a range is given it wins over the file: rows outside
-    it are dropped, and the credit window closes at `end`. With no range given the file's own
+    start/end (datetime.date, optional) bound the run. DialedIN's export range filters on the
+    lead's campaign `Date`, but we read `CallDate` (when the transfer happened) — so a 9/28-10/4
+    export came back carrying 267 Manhattan Life rows transferred 10/6-10/7. When a range is
+    given it wins over the file: rows outside it are dropped, and the credit window closes at
+    `end`. With no range given the file's own
     min/max CallDate is used, which is the old behaviour and trusts the export.
     """
     whens = [t["when"] for t in transfers if t["when"]]
@@ -268,9 +300,19 @@ def check(transfers, start=None, end=None):
             result = "No sale"
 
         shown = paid_pols or live or new
+        # Product line, for reporting. A sale is labelled by its carrier; a transfer that
+        # sold nothing falls back to the line its campaign was dialing, so every row can be
+        # grouped. NOTE: "line" below is the DID description (which phone line the call came
+        # in on) and has nothing to do with this — don't merge the two.
+        paid_by_line = Counter(carrier_line(p.get("carrier_name")) for p in paid_pols)
+        sale_lines = sorted({carrier_line(p.get("carrier_name")) for p in shown} - {""})
         rows.append({
             "rep": t["rep"] or "(no rep)",
             "campaign": t["campaign"],
+            "product_line": ", ".join(sale_lines) or campaign_line(t["campaign"]),
+            "sale_lines": ", ".join(sale_lines),
+            "pol_manhattan": paid_by_line.get(LINE_MANHATTAN, 0),
+            "pol_mapd": paid_by_line.get(LINE_MAPD, 0),
             "phone_last4": t["phone"][-4:],
             "transfer_time": t["when"].strftime("%Y-%m-%d %H:%M:%S") if t["when"] else "",
             "lead_id": lead_id,
@@ -293,7 +335,7 @@ def check(transfers, start=None, end=None):
     for r in rows:
         f = reps.setdefault(r["rep"], {"rep": r["rep"], "transfers": 0, "found": 0, "paid": 0,
                                        "policies": 0, "awaiting": 0, "pending": 0,
-                                       "not_found": 0})
+                                       "not_found": 0, "pol_manhattan": 0, "pol_mapd": 0})
         f["transfers"] += 1
         f["found"] += r["result"] != "Not found"
         f["paid"] += r["result"] == "Paid"
@@ -301,12 +343,32 @@ def check(transfers, start=None, end=None):
         f["awaiting"] += r["result"] == "Awaiting verification"
         f["pending"] += r["result"] == "Pending"
         f["not_found"] += r["result"] == "Not found"
+        # Verified policies split by line. These two always sum to `policies`, so the
+        # breakdown reconciles with the payable column instead of floating beside it.
+        f["pol_manhattan"] += r["pol_manhattan"]
+        f["pol_mapd"] += r["pol_mapd"]
     for f in reps.values():
         f["payable"] = f["paid"] if PAY_ONCE_PER_TRANSFER else f["policies"]
     by_rep = sorted(reps.values(), key=lambda f: (-f["payable"], -f["transfers"], f["rep"].lower()))
 
-    keys = ("transfers", "found", "paid", "policies", "awaiting", "pending", "not_found", "payable")
+    keys = ("transfers", "found", "paid", "policies", "awaiting", "pending", "not_found",
+            "payable", "pol_manhattan", "pol_mapd")
     totals = {k: sum(f[k] for f in by_rep) for k in keys}
+
+    # Per-line view of the whole run. `transfers` here groups on product_line (sale carrier,
+    # or the campaign's line when nothing sold), so it covers every row exactly once.
+    lines = {}
+    for r in rows:
+        key = r["product_line"] or "(unknown)"
+        g = lines.setdefault(key, {"line": key, "transfers": 0, "paid": 0, "policies": 0,
+                                   "awaiting": 0, "pending": 0, "not_found": 0})
+        g["transfers"] += 1
+        g["paid"] += r["result"] == "Paid"
+        g["policies"] += r["policies"]
+        g["awaiting"] += r["result"] == "Awaiting verification"
+        g["pending"] += r["result"] == "Pending"
+        g["not_found"] += r["result"] == "Not found"
+    by_line = sorted(lines.values(), key=lambda g: (-g["policies"], -g["transfers"], g["line"]))
     return {
         "range": {"start": d0.isoformat(), "end": d1.isoformat()},
         # What the file itself covered, and how many rows the range threw away. DialedIN
@@ -317,5 +379,6 @@ def check(transfers, start=None, end=None):
         "pay_once": PAY_ONCE_PER_TRANSFER,
         "totals": totals,
         "by_rep": by_rep,
+        "by_line": by_line,
         "rows": sorted(rows, key=lambda r: r["transfer_time"], reverse=True),
     }

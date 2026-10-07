@@ -1495,6 +1495,14 @@ function renderTransferCheck(){
     + card("Pending", (t.pending || 0).toLocaleString(), "Sale Made, policy not entered yet", t.pending ? "#B7791F" : "")
     + card("Not Found", (t.not_found || 0).toLocaleString(), "no matching call in TLD — check by hand",
            t.not_found ? "#E2574C" : "");
+  // Per-line recap. Sales are grouped by the carrier's line, so this can disagree with the
+  // campaign split — that's the cross-sell, and it's the point of showing it.
+  const lineNote = (d.by_line || []).length > 1
+    ? `<div style="margin-top:6px">By line: ` + d.by_line.map(g =>
+        `<b>${xferEsc(g.line)}</b> ${g.transfers.toLocaleString()} transfers,
+         ${g.policies.toLocaleString()} verified ${g.policies === 1 ? "sale" : "sales"}`).join(" · ")
+      + `<span class="dash"> — by sold carrier, not campaign</span></div>`
+    : "";
   const fr = d.file_range || {};
   const dropNote = d.dropped
     ? `<div style="margin-top:6px;color:#B7791F"><b>${d.dropped.toLocaleString()}</b> row${d.dropped === 1 ? "" : "s"}
@@ -1506,7 +1514,7 @@ function renderTransferCheck(){
     <b>${(d.by_rep || []).length}</b> fronters · ${xferEsc(d.range.start)} to ${xferEsc(d.range.end)} ·
     checked ${xferEsc(d.checked_at)} ·
     ${d.pay_once ? "paid once per transfer" : "paid per new policy"}.
-    Re-upload the same file later to pick up policies entered or verified since.${dropNote}`;
+    Re-upload the same file later to pick up policies entered or verified since.${lineNote}${dropNote}`;
   $("#xferRepWrap").hidden = false;
   $("#xferDetailTitle").hidden = false;
   $("#xferDetailCard").hidden = false;
@@ -1526,6 +1534,8 @@ function renderXferReps(){
       <td class="num">${n(r.transfers)}</td>
       <td class="num">${n(r.found)}</td>
       <td class="num" style="font-weight:700;color:#00A248">${n(r.payable)}</td>
+      <td class="num">${n(r.pol_manhattan)}</td>
+      <td class="num">${n(r.pol_mapd)}</td>
       <td class="num">${n(r.awaiting)}</td>
       <td class="num">${n(r.pending)}</td>
       <td class="num"${r.not_found ? ' style="color:#E2574C"' : ""}>${n(r.not_found)}</td>
@@ -1533,6 +1543,8 @@ function renderXferReps(){
   const t = d.totals || {};
   $("#xferRepTotals").innerHTML = `<tr><td><b>Total</b></td><td class="num"><b>${(t.transfers||0).toLocaleString()}</b></td>
     <td class="num"><b>${(t.found||0).toLocaleString()}</b></td><td class="num"><b>${(t.payable||0).toLocaleString()}</b></td>
+    <td class="num"><b>${(t.pol_manhattan||0).toLocaleString()}</b></td>
+    <td class="num"><b>${(t.pol_mapd||0).toLocaleString()}</b></td>
     <td class="num"><b>${(t.awaiting||0).toLocaleString()}</b></td>
     <td class="num"><b>${(t.pending||0).toLocaleString()}</b></td><td class="num"><b>${(t.not_found||0).toLocaleString()}</b></td></tr>`;
   document.querySelectorAll("#xferReps tr").forEach(tr => tr.addEventListener("click", () => {
@@ -1547,10 +1559,13 @@ function renderXferRows(){
   const d = xferData;
   xferArrows("data-xsort", xferSortKey, xferSortDir);
   const res = $("#xferResultFilter").value;
-  let rows = (d.rows || []).filter(r => (!xferRep || r.rep === xferRep) && (!res || r.result === res));
+  const pl = $("#xferLineFilter").value;
+  let rows = (d.rows || []).filter(r => (!xferRep || r.rep === xferRep)
+    && (!res || r.result === res) && (!pl || r.product_line === pl));
   rows = xferSort(rows, xferSortKey, xferSortDir);
   $("#xferClearRep").hidden = !xferRep;
-  $("#xferDetailCount").textContent = ` · ${rows.length.toLocaleString()}` + (xferRep ? ` for ${xferRep}` : "");
+  $("#xferDetailCount").textContent = ` · ${rows.length.toLocaleString()}`
+    + (xferRep ? ` for ${xferRep}` : "") + (pl ? ` · ${pl}` : "");
   const cls = {"Paid": "paid", "Awaiting verification": "pending", "Pending": "pending",
                "No sale": "nosale", "Not found": "notfound"};
   const dash = '<span class="dash">—</span>';
@@ -1559,6 +1574,8 @@ function renderXferRows(){
       <td>${xferEsc(r.transfer_time)}</td>
       <td>${xferEsc(r.rep)}</td>
       <td>${xferEsc(r.campaign) || dash}</td>
+      <td${r.sale_lines && r.sale_lines !== r.campaign_line ? ' style="font-weight:600"' : ""}
+          title="${r.sale_lines ? "from the sold carrier" : "no sale — from the campaign"}">${xferEsc(r.product_line) || dash}</td>
       <td>…${xferEsc(r.phone_last4)}</td>
       <td>${xferEsc(r.lead_id) || dash}</td>
       <td><span class="xres ${cls[r.result] || ""}">${xferEsc(r.result)}</span>${r.policies > 1 ? ` <span class="dash" title="new policies on this transfer">×${r.policies}</span>` : ""}</td>
@@ -1569,7 +1586,7 @@ function renderXferRows(){
       <td>${xferEsc(r.verified_by) || dash}</td>
       <td title="${xferEsc(r.line)}">${xferEsc(r.landed_vendor) || dash}</td>
     </tr>`).join("")
-    : '<tr><td colspan="12" class="dash" style="padding:14px">No transfers match this filter.</td></tr>';
+    : '<tr><td colspan="13" class="dash" style="padding:14px">No transfers match this filter.</td></tr>';
 }
 
 document.querySelectorAll("th[data-xrsort]").forEach(th => th.addEventListener("click", () => {
@@ -1586,6 +1603,7 @@ document.querySelectorAll("th[data-xsort]").forEach(th => th.addEventListener("c
 }));
 $("#xferRun").addEventListener("click", runTransferCheck);
 $("#xferResultFilter").addEventListener("change", () => { if (xferData) renderXferRows(); });
+$("#xferLineFilter").addEventListener("change", () => { if (xferData) renderXferRows(); });
 $("#xferClearRep").addEventListener("click", () => { xferRep = null; renderXferReps(); renderXferRows(); });
 $("#xferExport").addEventListener("click", () => {
   if (xferData && xferData.token) window.location = `/api/transfer_check/export?token=${xferData.token}`;

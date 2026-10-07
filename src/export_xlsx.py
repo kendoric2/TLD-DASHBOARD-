@@ -339,6 +339,8 @@ TRANSFER_REP_COLUMNS = [
     ("Found in TLD",       "found"),
     ("Paid Sales",         "payable"),
     ("Verified Policies",  "policies"),
+    ("· Manhattan Life",   "pol_manhattan"),
+    ("· MAPD",             "pol_mapd"),
     ("Awaiting Verification", "awaiting"),
     ("Pending (Sale Made, no policy yet)", "pending"),
     ("Not Found",          "not_found"),
@@ -347,6 +349,7 @@ TRANSFER_REP_COLUMNS = [
 TRANSFER_COLUMNS = [
     ("Fronter",        "rep"),
     ("Campaign",       "campaign"),
+    ("Product Line",   "product_line"),
     ("Transfer Time",  "transfer_time"),
     ("Phone (last 4)", "phone_last4"),
     ("Lead ID",        "lead_id"),
@@ -390,6 +393,18 @@ def build_transfers(data):
         ws.append([r.get(k, "") for _h, k in TRANSFER_REP_COLUMNS])
     ws.append([])
     ws.append(["TOTAL"] + [t.get(k, 0) for _h, k in TRANSFER_REP_COLUMNS[1:]])
+
+    by_line = data.get("by_line") or []
+    if by_line:
+        ws.append([])
+        ws.append(["By product line — a sale is counted under its CARRIER's line, not the "
+                   "campaign the fronter was dialing (the two disagree). Reporting only: "
+                   "the fronter is paid for whatever their transfer sold."])
+        ws.append(["Product Line", "Transfers", "Paid Sales", "Verified Policies",
+                   "Awaiting Verification", "Pending", "Not Found"])
+        for g in by_line:
+            ws.append([g["line"], g["transfers"], g["paid"], g["policies"],
+                       g["awaiting"], g["pending"], g["not_found"]])
 
     wd = wb.create_sheet("Transfer Detail")
     wd.append([h for h, _k in TRANSFER_COLUMNS])
