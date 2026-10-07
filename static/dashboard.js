@@ -1421,7 +1421,8 @@ load();
 
 /* ===== Transfer Check tab — DialedIN fronter transfers matched against TLD =====
    Upload the export; the server matches each phone to its TLD lead, inbound call and any
-   NEW policy created on/after the transfer day (that's what pays the fronter). Results
+   NEW policy created on/after the transfer day and on/before the export's last day (that's
+   what pays the fronter; later sales belong to the next week's check). Results
    come back once and are sorted / filtered here without refetching. */
 let xferData = null;                                   // last check payload (incl. token for export)
 let xferRep = null;                                    // fronter selected in the summary table

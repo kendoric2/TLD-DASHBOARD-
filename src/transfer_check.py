@@ -12,9 +12,13 @@ works backwards from DialedIN's own list of transfers instead:
   3. POLICIES  policies on those leads                 policies, "lead_id" takes a list
 
 A fronter is PAID when one of the phone's leads has a NEW policy created on/after the
-transfer day AND a manager has verified it ("dropped" — TLD's `verified` flag). Old
-policies (from the previous FMO, set to Unsold) are ignored because they were created
-before the transfer. A new policy not verified yet is AWAITING VERIFICATION; "Sale Made"
+transfer day AND on/before the last transfer day in the export, AND a manager has verified
+it ("dropped" — TLD's `verified` flag). Old policies (from the previous FMO, set to Unsold)
+are ignored because they were created before the transfer; policies created after the
+export's last day are ignored because they belong to a later run — the policies lookup is
+filtered on lead_id with no date filter, so without that cap any future policy on the
+phone's leads would be credited back to this transfer. A new policy not verified yet is
+AWAITING VERIFICATION; "Sale Made"
 on the call with no new policy yet is PENDING. The export is run weekly on Saturday after
 managers have verified the week, so both should be near zero by then.
 
@@ -197,6 +201,12 @@ def check(transfers):
         for p in pols:
             created = _parse_dt(p.get("date_created"))
             if not created:
+                continue
+            # Upper bound: the export is a self-contained week, so a policy created after
+            # the last transfer day in the file belongs to a later run, not this one.
+            # Without this the lookup (filtered on lead_id only, no date filter) credited
+            # ANY future policy on the phone's leads to the transfer.
+            if created.date() > d1:
                 continue
             owners = [i for i in idxs if transfers[i]["when"]
                       and transfers[i]["when"].date() <= created.date()]

@@ -375,7 +375,8 @@ def build_transfers(data):
     ws.append(["Fronter Transfer Check — DialedIN transfers matched to TLD"])
     ws.append([f"Transfers: {rng.get('start', '')} to {rng.get('end', '')}  ·  "
                f"checked {data.get('checked_at', '')}"])
-    ws.append(["Paid = a new policy created on/after the transfer day and verified by a manager. "
+    ws.append([f"Paid = a new policy created on/after the transfer day, on/before "
+               f"{rng.get('end', '')}, and verified by a manager. "
                + ("Paid once per transfer." if data.get("pay_once") else "Paid per new policy.")
                + " Pending = agent marked Sale Made but no policy entered yet."])
     ws.append([])
