@@ -88,8 +88,18 @@ COLS = {
     "rep":      ["Rep", "Agent", "Fronter"],
     "campaign": ["Campaign"],
     "when":     ["CallDate", "LastUpdated", "Date"],
-    "tld_id":   ["TLD Lead ID", "TLD Lead Id", "Lead ID"],
+    # Never plain "Lead ID": in the CallDetails export that's DialedIN's OWN id — the same
+    # 9 digits as a TLD lead id but a different number, so it would credit another
+    # person's policies (0 of 40 matched a TLD lead on 10/5-10/9).
+    "tld_id":   ["TLD Lead ID", "TLD Lead Id"],
 }
+
+# DialedIN's CallDetails export logs every transfer twice: the fronter's leg
+# (Details "Transferred Call", Rep = the fronter's login) and the line's leg (Details
+# "Blind Transfer", Rep = the transfer line's phone number). Only the fronter's leg is a
+# transfer — counting both doubled the total and made the line number look like a rep.
+DETAILS_COL = "Details"
+FRONTER_DETAILS = "transferred call"
 
 
 def _phone10(s):
@@ -144,10 +154,17 @@ def parse_export(data, filename=""):
     col = {k: _pick(header, v) for k, v in COLS.items()}
     if not col["phone"] or not col["when"]:
         raise ValueError("This doesn't look like a DialedIN export — it needs a "
-                         "PrimaryPhone and a CallDate column.")
+                         "phone column (PrimaryPhone or Phone) and a date column "
+                         "(CallDate or Date).")
 
+    details = _pick(header, [DETAILS_COL])
+    if details and not any(str(r.get(details) or "").strip().lower() == FRONTER_DETAILS
+                           for r in records):
+        details = None                    # a "Details" column, but not the CallDetails kind
     out = []
     for r in records:
+        if details and str(r.get(details) or "").strip().lower() != FRONTER_DETAILS:
+            continue
         phone = _phone10(r.get(col["phone"]))
         if not phone:
             continue

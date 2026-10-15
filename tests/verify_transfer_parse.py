@@ -1,0 +1,56 @@
+"""
+Check that Transfer Check reads both DialedIN export formats correctly (offline, fake data).
+
+Run from the project root:
+    python3 tests/verify_transfer_parse.py
+
+Prints OK for each case, or stops at the first one that fails.
+"""
+
+# --- make src/ importable no matter where this script is run from ---
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+
+import transfer_check as tc
+
+
+def csv_bytes(lines):
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+# CallDetails export: every transfer twice — the line's "Blind Transfer" leg (Rep is a
+# phone number) and the fronter's "Transferred Call" leg. Lead ID is DialedIN's own id.
+call_details = csv_bytes([
+    "Date,Rep,Campaign,Phone,Lead ID,Details",
+    "10/09/2026 5:00:24 PM,5613630948,Manhattan Life,(555) 010-0001,123456789,Blind Transfer",
+    "10/09/2026 5:00:24 PM,jeanr@ihp,Manhattan Life,(555) 010-0001,123456789,Transferred Call",
+    "10/08/2026 9:15:00 AM,5613630948,MAPD,555-010-0002,987654321,Blind Transfer",
+    "10/08/2026 9:15:00 AM,melf@ihp,MAPD,555-010-0002,987654321,Transferred Call",
+])
+rows = tc.parse_export(call_details, "CallDetails.csv")
+assert len(rows) == 2, f"expected only the 2 fronter legs, got {len(rows)}"
+assert [r["rep"] for r in rows] == ["jeanr@ihp", "melf@ihp"], rows
+assert all(r["tld_id"] == "" for r in rows), "DialedIN's Lead ID must not be used as a TLD lead id"
+assert rows[0]["phone"] == "5550100001" and rows[0]["when"].hour == 17, rows[0]
+print("OK  CallDetails: fronter rows only, DialedIN Lead ID ignored")
+
+# Original lead export: one row per transfer, TLD Lead ID is trusted.
+lead_export = csv_bytes([
+    "PrimaryPhone,CallDate,Rep,Campaign,TLD Lead ID",
+    "5550100003,10/07/2026 11:00:00 AM,corap@ihp,Manhattan Life,111222333",
+    "5550100004,10/07/2026 12:00:00 PM,dianet@ihp,MAPD,",
+])
+rows = tc.parse_export(lead_export, "leads.csv")
+assert len(rows) == 2, rows
+assert rows[0]["tld_id"] == "111222333" and rows[1]["tld_id"] == "", rows
+print("OK  lead export: unchanged, TLD Lead ID still used")
+
+# A "Details" column that isn't the CallDetails kind must not throw rows away.
+other_details = csv_bytes([
+    "PrimaryPhone,CallDate,Rep,Details",
+    "5550100005,10/06/2026 10:00:00 AM,genec@ihp,Some note",
+])
+assert len(tc.parse_export(other_details, "x.csv")) == 1
+print("OK  unrelated Details column: rows kept")
+
+print("\nAll Transfer Check parsing checks passed.")
