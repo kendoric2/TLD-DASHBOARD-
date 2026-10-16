@@ -206,10 +206,18 @@
     </div>
 
     <div class="section-title" id="xferDetailTitle" hidden>Transfers<span class="agentCount" id="xferDetailCount"></span>
-      <span class="hint">&mdash; click a fronter above to filter, click a column to sort</span>
+      <span class="hint">&mdash; pick a fronter or agent (or click a fronter above) to filter, click a column to sort</span>
     </div>
     <div class="card" id="xferDetailCard" hidden>
       <span class="detail-controls" style="margin-bottom:10px">
+        <select class="detail-agent" id="xferRepFilter" aria-label="Filter by fronter"
+                title="The DialedIN rep who made the transfer">
+          <option value="">All fronters</option>
+        </select>
+        <select class="detail-agent" id="xferAgentFilter" aria-label="Filter by agent"
+                title="The TLD agent who took the transferred call">
+          <option value="">All agents</option>
+        </select>
         <select class="detail-agent" id="xferLineFilter" aria-label="Filter by product line"
                 title="A sale is grouped by its carrier's line; a transfer that sold nothing falls back to the line its campaign was dialing">
           <option value="">All product lines</option>
@@ -224,7 +232,7 @@
           <option value="No sale">No sale</option>
           <option value="Not found">Not found</option>
         </select>
-        <button class="btn dark" id="xferClearRep" hidden>Show all fronters</button>
+        <button class="btn dark" id="xferClearRep" hidden>Show everyone</button>
       </span>
       <div class="table-scroll" style="max-height:560px">
         <table>

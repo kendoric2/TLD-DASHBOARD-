@@ -1425,7 +1425,8 @@ load();
    what pays the fronter; later sales belong to the next week's check). Results
    come back once and are sorted / filtered here without refetching. */
 let xferData = null;                                   // last check payload (incl. token for export)
-let xferRep = null;                                    // fronter selected in the summary table
+let xferRep = null;                                    // fronter selected in the summary table or dropdown
+let xferAgent = null;                                  // TLD agent selected in the dropdown
 let xferRepSortKey = "payable", xferRepSortDir = -1;
 let xferSortKey = "transfer_time", xferSortDir = -1;
 
@@ -1468,6 +1469,7 @@ async function runTransferCheck(){
     if (d.error){ sum.textContent = d.error; return; }
     xferData = d;
     xferRep = null;
+    xferAgent = null;
     renderTransferCheck();
   } catch (err){
     sum.textContent = "Could not run the transfer check: " + err;
@@ -1533,8 +1535,21 @@ function renderTransferCheck(){
   $("#xferDetailTitle").hidden = false;
   $("#xferDetailCard").hidden = false;
   $("#xferExport").hidden = false;
+  fillXferPeople();
   renderXferReps();
   renderXferRows();
+}
+
+// Fronter + agent dropdowns, built from this run's rows (alphabetical, "All" first).
+function fillXferPeople(){
+  const rows = xferData.rows || [];
+  const fill = (sel, all, names) => {
+    $(sel).innerHTML = `<option value="">${all}</option>` + [...new Set(names)]
+      .filter(Boolean).sort((a, b) => a.localeCompare(b))
+      .map(n => `<option value="${xferEsc(n)}">${xferEsc(n)}</option>`).join("");
+  };
+  fill("#xferRepFilter", "All fronters", rows.map(r => r.rep));
+  fill("#xferAgentFilter", "All agents", rows.map(r => r.agent));
 }
 
 function renderXferReps(){
@@ -1575,11 +1590,15 @@ function renderXferRows(){
   const res = $("#xferResultFilter").value;
   const pl = $("#xferLineFilter").value;
   let rows = (d.rows || []).filter(r => (!xferRep || r.rep === xferRep)
+    && (!xferAgent || r.agent === xferAgent)
     && (!res || r.result === res) && (!pl || r.product_line === pl));
   rows = xferSort(rows, xferSortKey, xferSortDir);
-  $("#xferClearRep").hidden = !xferRep;
+  $("#xferRepFilter").value = xferRep || "";            // keep the dropdowns in step with the table clicks
+  $("#xferAgentFilter").value = xferAgent || "";
+  $("#xferClearRep").hidden = !xferRep && !xferAgent;
   $("#xferDetailCount").textContent = ` · ${rows.length.toLocaleString()}`
-    + (xferRep ? ` for ${xferRep}` : "") + (pl ? ` · ${pl}` : "");
+    + (xferRep ? ` for ${xferRep}` : "") + (xferAgent ? ` · agent ${xferAgent}` : "")
+    + (pl ? ` · ${pl}` : "");
   const cls = {"Paid": "paid", "Awaiting verification": "pending", "Pending": "pending",
                "No sale": "nosale", "Not found": "notfound"};
   const dash = '<span class="dash">—</span>';
@@ -1618,7 +1637,15 @@ document.querySelectorAll("th[data-xsort]").forEach(th => th.addEventListener("c
 $("#xferRun").addEventListener("click", runTransferCheck);
 $("#xferResultFilter").addEventListener("change", () => { if (xferData) renderXferRows(); });
 $("#xferLineFilter").addEventListener("change", () => { if (xferData) renderXferRows(); });
-$("#xferClearRep").addEventListener("click", () => { xferRep = null; renderXferReps(); renderXferRows(); });
+$("#xferRepFilter").addEventListener("change", e => {
+  xferRep = e.target.value || null;
+  if (xferData){ renderXferReps(); renderXferRows(); }
+});
+$("#xferAgentFilter").addEventListener("change", e => {
+  xferAgent = e.target.value || null;
+  if (xferData) renderXferRows();
+});
+$("#xferClearRep").addEventListener("click", () => { xferRep = null; xferAgent = null; renderXferReps(); renderXferRows(); });
 $("#xferExport").addEventListener("click", () => {
   if (xferData && xferData.token) window.location = `/api/transfer_check/export?token=${xferData.token}`;
 });
