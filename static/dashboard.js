@@ -1431,7 +1431,7 @@ let xferRepSortKey = "payable", xferRepSortDir = -1;
 let xferSortKey = "transfer_time", xferSortDir = -1;
 
 const xferEsc = v => String(v == null ? "" : v).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const XFER_NUMERIC = new Set(["transfers", "found", "payable", "awaiting", "pending", "not_found", "policies"]);
+const XFER_NUMERIC = new Set(["transfers", "found", "payable", "awaiting", "pending", "callback", "not_found", "policies", "callback_calls"]);
 
 function xferSort(rows, key, dir){
   return [...(rows || [])].sort((a, b) => {
@@ -1495,6 +1495,8 @@ function renderTransferCheck(){
     + card("Awaiting Verification", (t.awaiting || 0).toLocaleString(), "policy entered, not verified by a manager yet",
            t.awaiting ? "#B7791F" : "")
     + card("Pending", (t.pending || 0).toLocaleString(), "Sale Made, policy not entered yet", t.pending ? "#B7791F" : "")
+    + card("Callback – Not Paid", (t.callback || 0).toLocaleString(),
+           "sold only after another call with the customer", t.callback ? "#6B2FA3" : "")
     + card("Not Found", (t.not_found || 0).toLocaleString(), "no matching call in TLD — check by hand",
            t.not_found ? "#E2574C" : "");
   // Per-line recap. Sales are grouped by the carrier's line, so this can disagree with the
@@ -1567,6 +1569,7 @@ function renderXferReps(){
       <td class="num">${n(r.pol_mapd)}</td>
       <td class="num">${n(r.awaiting)}</td>
       <td class="num">${n(r.pending)}</td>
+      <td class="num">${n(r.callback)}</td>
       <td class="num"${r.not_found ? ' style="color:#E2574C"' : ""}>${n(r.not_found)}</td>
     </tr>`).join("");
   const t = d.totals || {};
@@ -1575,7 +1578,8 @@ function renderXferReps(){
     <td class="num"><b>${(t.pol_manhattan||0).toLocaleString()}</b></td>
     <td class="num"><b>${(t.pol_mapd||0).toLocaleString()}</b></td>
     <td class="num"><b>${(t.awaiting||0).toLocaleString()}</b></td>
-    <td class="num"><b>${(t.pending||0).toLocaleString()}</b></td><td class="num"><b>${(t.not_found||0).toLocaleString()}</b></td></tr>`;
+    <td class="num"><b>${(t.pending||0).toLocaleString()}</b></td><td class="num"><b>${(t.callback||0).toLocaleString()}</b></td>
+    <td class="num"><b>${(t.not_found||0).toLocaleString()}</b></td></tr>`;
   document.querySelectorAll("#xferReps tr").forEach(tr => tr.addEventListener("click", () => {
     const rep = tr.getAttribute("data-rep");
     xferRep = (xferRep === rep) ? null : rep;          // click again to clear
@@ -1600,7 +1604,7 @@ function renderXferRows(){
     + (xferRep ? ` for ${xferRep}` : "") + (xferAgent ? ` · agent ${xferAgent}` : "")
     + (pl ? ` · ${pl}` : "");
   const cls = {"Paid": "paid", "Awaiting verification": "pending", "Pending": "pending",
-               "No sale": "nosale", "Not found": "notfound"};
+               "Callback – not paid": "callback", "No sale": "nosale", "Not found": "notfound"};
   const dash = '<span class="dash">—</span>';
   $("#xferRows").innerHTML = rows.length ? rows.map(r => `
     <tr>
@@ -1611,7 +1615,7 @@ function renderXferRows(){
           title="${r.sale_lines ? "from the sold carrier" : "no sale — from the campaign"}">${xferEsc(r.product_line) || dash}</td>
       <td>…${xferEsc(r.phone_last4)}</td>
       <td>${xferEsc(r.lead_id) || dash}</td>
-      <td><span class="xres ${cls[r.result] || ""}">${xferEsc(r.result)}</span>${r.policies > 1 ? ` <span class="dash" title="new policies on this transfer">×${r.policies}</span>` : ""}</td>
+      <td><span class="xres ${cls[r.result] || ""}"${r.callback_calls ? ` title="${r.callback_calls} other call${r.callback_calls === 1 ? "" : "s"} with the customer before the sale"` : ""}>${xferEsc(r.result)}</span>${r.policies > 1 ? ` <span class="dash" title="new policies on this transfer">×${r.policies}</span>` : ""}</td>
       <td>${xferEsc(r.agent) || dash}</td>
       <td>${xferEsc(r.disposition) || dash}</td>
       <td title="${xferEsc(r.policy_status)}">${xferEsc(r.carrier) || dash}</td>

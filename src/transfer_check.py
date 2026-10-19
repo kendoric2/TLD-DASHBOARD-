@@ -11,9 +11,12 @@ works backwards from DialedIN's own list of transfers instead:
                closest to DialedIN's CallDate          takes a list
   3. POLICIES  policies on those leads                 policies, "lead_id" takes a list
 
-A fronter is PAID when one of the phone's leads has a NEW policy created on/after the
-transfer day AND on/before the last transfer day in the export, AND a manager has verified
-it ("dropped" — TLD's `verified` flag). Old policies (from the previous FMO, set to Unsold)
+A fronter is PAID when one of the phone's leads has a NEW policy created AFTER the transfer
+(to the minute) AND on/before the last transfer day in the export, AND a manager has verified
+it ("dropped" — TLD's `verified` flag), AND it closed on the transfer call itself: same day,
+with no other call to or from that phone between the transfer call and the policy. A sale
+that needed a callback is CALLBACK — NOT PAID (10/15-10/18: 113 of 155 "paid" sales were
+closed on a later call, mostly the customer calling back in 10-60 min after the transfer). Old policies (from the previous FMO, set to Unsold)
 are ignored because they were created before the transfer; policies created after the
 export's last day are ignored because they belong to a later run — the policies lookup is
 filtered on lead_id with no date filter, so without that cap any future policy on the
@@ -45,6 +48,11 @@ PAY_ONCE_PER_TRANSFER = True
 
 # A call counts as "the transfer" if it's within this long of DialedIN's CallDate.
 MATCH_WINDOW = dt.timedelta(hours=3)
+
+# Calls this soon after the transfer call are legs of the same call (queue -> agent), not
+# a callback.
+SAME_CALL = dt.timedelta(seconds=60)
+RESULT_CALLBACK = "Callback – not paid"
 
 # New policies in these statuses don't pay (trash = deleted, quoted = never sold).
 UNPAID_STATUSES = {"trash", "quoted", "unsold", "cancelled", "canceled", "declined"}
@@ -294,14 +302,15 @@ def check(transfers, start=None, end=None):
     # 1. every TLD lead for each phone
     leads_by_phone = _leads_by_phone(phones)
 
-    # 2. inbound calls from those phones (a day of slack each side)
+    # 2. every call with those phones, both directions (a day of slack each side). Inbound
+    #    calls are matched to the transfer; all calls are used to spot callbacks.
     calls_by_phone = defaultdict(list)
     c0, c1 = d0 - dt.timedelta(days=1), d1 + dt.timedelta(days=1)
     for batch in _chunks(phones):
         resp = config.egress_get(CALL_LOG, {
-            "columns": ["call_date", "phone_number", "agent_name", "status_name",
+            "columns": ["call_date", "phone_number", "agent_name", "status_name", "call_direction",
                         "vendor_description", "did_description", "lead_vendor_lead_code"],
-            "call_direction": "INBOUND", "phone_number": batch, "limit": 50000,
+            "phone_number": batch, "limit": 50000,
             "call_date": f"{c0} 00:00:00", "call_date_end": f"{c1} 23:59:59"}, timeout=300)
         for r in _rows(resp):
             p = _phone10(r.get("phone_number"))
@@ -313,8 +322,9 @@ def check(transfers, start=None, end=None):
                       | {t["tld_id"] for t in transfers if t["tld_id"]})
     policies_by_lead = _policies_by_lead(lead_ids)
 
-    # Same phone transferred more than once: a policy belongs to the LATEST transfer on or
-    # before the day it was created, so two fronters can never both be paid for one sale.
+    # Same phone transferred more than once: a policy belongs to the LATEST transfer before
+    # it was created (to the minute — comparing days credited an 11 AM sale to a 3 PM
+    # transfer), so two fronters can never both be paid for one sale.
     by_phone = defaultdict(list)
     for i, t in enumerate(transfers):
         by_phone[t["phone"]].append(i)
@@ -332,8 +342,7 @@ def check(transfers, start=None, end=None):
             # ANY future policy on the phone's leads to the transfer.
             if created.date() > d1:
                 continue
-            owners = [i for i in idxs if transfers[i]["when"]
-                      and transfers[i]["when"].date() <= created.date()]
+            owners = [i for i in idxs if transfers[i]["when"] and transfers[i]["when"] <= created]
             if owners:
                 credited[max(owners, key=lambda i: transfers[i]["when"])].append(p)
 
@@ -343,6 +352,8 @@ def check(transfers, start=None, end=None):
         if t["when"]:
             best = None
             for c in calls_by_phone.get(t["phone"], []):
+                if str(c.get("call_direction") or "").upper() != "INBOUND":
+                    continue
                 cd = _parse_dt(c.get("call_date"))
                 if cd:
                     gap = abs(cd - t["when"])
@@ -352,12 +363,27 @@ def check(transfers, start=None, end=None):
 
         new = sorted(credited.get(i, []), key=lambda p: str(p.get("date_created") or ""))
         live = [p for p in new if _is_live(p)]
-        paid_pols = [p for p in live if _is_verified(p)]
         disposition = str(call.get("status_name") or "").strip() if call else ""
         lead_id = (str(call.get("lead_vendor_lead_code") or "").strip() if call else "") \
             or t["tld_id"] or (leads_by_phone.get(t["phone"]) or [""])[-1]
 
-        if paid_pols:
+        # Closed on the transfer call, or on a callback? Count every call with this phone
+        # between the transfer call and the first new policy; any call, or a sale on a
+        # later day, means it wasn't closed in the transfer's cycle.
+        callback_calls = 0
+        callback = False
+        if live:
+            ref = (_parse_dt(call.get("call_date")) if call else None) or t["when"]
+            first = min(_parse_dt(p.get("date_created")) for p in live)
+            callback_calls = sum(1 for c in calls_by_phone.get(t["phone"], [])
+                                 if (cd := _parse_dt(c.get("call_date")))
+                                 and ref + SAME_CALL < cd < first)
+            callback = bool(callback_calls) or first.date() != ref.date()
+        paid_pols = [] if callback else [p for p in live if _is_verified(p)]
+
+        if callback:
+            result = RESULT_CALLBACK
+        elif paid_pols:
             result = "Paid"
         elif live:
             result = "Awaiting verification"
@@ -391,6 +417,7 @@ def check(transfers, start=None, end=None):
             "landed_vendor": str(call.get("vendor_description") or "").strip() if call else "",
             "line": str(call.get("did_description") or "").strip() if call else "",
             "result": result,
+            "callback_calls": callback_calls,
             "policies": len(paid_pols),
             "carrier": ", ".join(sorted({str(p.get("carrier_name") or "").strip() for p in shown} - {""})),
             "verified_by": ", ".join(sorted({str(p.get("verifier_name") or "").strip()
@@ -403,7 +430,7 @@ def check(transfers, start=None, end=None):
     reps = {}
     for r in rows:
         f = reps.setdefault(r["rep"], {"rep": r["rep"], "transfers": 0, "found": 0, "paid": 0,
-                                       "policies": 0, "awaiting": 0, "pending": 0,
+                                       "policies": 0, "awaiting": 0, "pending": 0, "callback": 0,
                                        "not_found": 0, "pol_manhattan": 0, "pol_mapd": 0})
         f["transfers"] += 1
         f["found"] += r["result"] != "Not found"
@@ -411,6 +438,7 @@ def check(transfers, start=None, end=None):
         f["policies"] += r["policies"]
         f["awaiting"] += r["result"] == "Awaiting verification"
         f["pending"] += r["result"] == "Pending"
+        f["callback"] += r["result"] == RESULT_CALLBACK
         f["not_found"] += r["result"] == "Not found"
         # Verified policies split by line. These two always sum to `policies`, so the
         # breakdown reconciles with the payable column instead of floating beside it.
@@ -420,8 +448,8 @@ def check(transfers, start=None, end=None):
         f["payable"] = f["paid"] if PAY_ONCE_PER_TRANSFER else f["policies"]
     by_rep = sorted(reps.values(), key=lambda f: (-f["payable"], -f["transfers"], f["rep"].lower()))
 
-    keys = ("transfers", "found", "paid", "policies", "awaiting", "pending", "not_found",
-            "payable", "pol_manhattan", "pol_mapd")
+    keys = ("transfers", "found", "paid", "policies", "awaiting", "pending", "callback",
+            "not_found", "payable", "pol_manhattan", "pol_mapd")
     totals = {k: sum(f[k] for f in by_rep) for k in keys}
 
     # Per-line view of the whole run. `transfers` here groups on product_line (sale carrier,
@@ -430,12 +458,13 @@ def check(transfers, start=None, end=None):
     for r in rows:
         key = r["product_line"] or "(unknown)"
         g = lines.setdefault(key, {"line": key, "transfers": 0, "paid": 0, "policies": 0,
-                                   "awaiting": 0, "pending": 0, "not_found": 0})
+                                   "awaiting": 0, "pending": 0, "callback": 0, "not_found": 0})
         g["transfers"] += 1
         g["paid"] += r["result"] == "Paid"
         g["policies"] += r["policies"]
         g["awaiting"] += r["result"] == "Awaiting verification"
         g["pending"] += r["result"] == "Pending"
+        g["callback"] += r["result"] == RESULT_CALLBACK
         g["not_found"] += r["result"] == "Not found"
     by_line = sorted(lines.values(), key=lambda g: (-g["policies"], -g["transfers"], g["line"]))
     return {

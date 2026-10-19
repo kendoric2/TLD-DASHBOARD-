@@ -343,6 +343,7 @@ TRANSFER_REP_COLUMNS = [
     ("· MAPD",             "pol_mapd"),
     ("Awaiting Verification", "awaiting"),
     ("Pending (Sale Made, no policy yet)", "pending"),
+    ("Callback (not paid)", "callback"),
     ("Not Found",          "not_found"),
 ]
 
@@ -354,6 +355,7 @@ TRANSFER_COLUMNS = [
     ("Phone (last 4)", "phone_last4"),
     ("Lead ID",        "lead_id"),
     ("Result",         "result"),
+    ("Calls Before Sale", "callback_calls"),
     ("Agent",          "agent"),
     ("Disposition",    "disposition"),
     ("Carrier",        "carrier"),
@@ -368,7 +370,7 @@ TRANSFER_COLUMNS = [
 
 def build_transfers(data):
     """Transfer Check for payroll: a per-fronter summary sheet, then every transfer as the
-    backup. Paid = a NEW policy created on/after the transfer day."""
+    backup. Paid = a NEW policy closed on the transfer call (see transfer_check)."""
     rng = data.get("range") or {}
     t = data.get("totals") or {}
     wb = Workbook()
@@ -394,9 +396,11 @@ def build_transfers(data):
                 parts.append(f"{g['transfers']} transferred {verb} this week ({span}) — {todo}")
         ws.append([f"WARNING: {ds['transfers']} ignored transfer(s) already have a sale: "
                    + "; ".join(parts) + "."])
-    ws.append([f"Paid = a new policy created on/after the transfer day, on/before "
-               f"{rng.get('end', '')}, and verified by a manager. "
+    ws.append([f"Paid = a new policy created after the transfer, on/before "
+               f"{rng.get('end', '')}, verified by a manager, and closed on the transfer call "
+               "(same day, no other calls with the customer in between). "
                + ("Paid once per transfer." if data.get("pay_once") else "Paid per new policy.")
+               + " Callback = sold, but only after another call with the customer, so not paid."
                + " Pending = agent marked Sale Made but no policy entered yet."])
     ws.append([])
     ws.append([h for h, _k in TRANSFER_REP_COLUMNS])
@@ -412,10 +416,10 @@ def build_transfers(data):
                    "campaign the fronter was dialing (the two disagree). Reporting only: "
                    "the fronter is paid for whatever their transfer sold."])
         ws.append(["Product Line", "Transfers", "Paid Sales", "Verified Policies",
-                   "Awaiting Verification", "Pending", "Not Found"])
+                   "Awaiting Verification", "Pending", "Callback (not paid)", "Not Found"])
         for g in by_line:
             ws.append([g["line"], g["transfers"], g["paid"], g["policies"],
-                       g["awaiting"], g["pending"], g["not_found"]])
+                       g["awaiting"], g["pending"], g.get("callback", 0), g["not_found"]])
 
     wd = wb.create_sheet("Transfer Detail")
     wd.append([h for h, _k in TRANSFER_COLUMNS])
