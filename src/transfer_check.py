@@ -48,6 +48,8 @@ PAY_ONCE_PER_TRANSFER = True
 
 # A call counts as "the transfer" if it's within this long of DialedIN's CallDate.
 MATCH_WINDOW = dt.timedelta(hours=3)
+# TLD's call can start a few seconds after the file's time (median +2 s on CallDetails).
+CALL_SLACK = dt.timedelta(seconds=60)
 
 # A sale only pays if it's written the same day as the transfer.
 RESULT_LATER_DAY = "Later day – not paid"
@@ -106,6 +108,12 @@ COLS = {
 # transfer — counting both doubled the total and made the line number look like a rep.
 DETAILS_COL = "Details"
 FRONTER_DETAILS = "transferred call"
+
+# DialedIN's BlindTransfer export puts the TRANSFER LINE in "Phone" (3 numbers across 1,566
+# rows on 10/15-10/18) and the customer in "Caller ID". When Phone is only a handful of
+# numbers, it's the lines — read the customer from Caller ID instead.
+CALLER_ID_COL = "Caller ID"
+LINE_PHONES_MAX = 5
 
 
 def _phone10(s):
@@ -167,10 +175,15 @@ def parse_export(data, filename=""):
     if details and not any(str(r.get(details) or "").strip().lower() == FRONTER_DETAILS
                            for r in records):
         details = None                    # a "Details" column, but not the CallDetails kind
+    if details:
+        records = [r for r in records if str(r.get(details) or "").strip().lower() == FRONTER_DETAILS]
+    caller_id = _pick(header, [CALLER_ID_COL])
+    if caller_id and len(records) > 20:
+        phones = {_phone10(r.get(col["phone"])) for r in records} - {""}
+        if len(phones) <= LINE_PHONES_MAX:
+            col["phone"] = caller_id      # Phone is the transfer lines; the customer is here
     out = []
     for r in records:
-        if details and str(r.get(details) or "").strip().lower() != FRONTER_DETAILS:
-            continue
         phone = _phone10(r.get(col["phone"]))
         if not phone:
             continue
@@ -195,6 +208,20 @@ def _chunks(seq, n=CHUNK):
 
 def _has_id(v):
     return str(v or "").strip() not in ("", "0", "None")
+
+
+def _match_call(t, calls):
+    """The inbound TLD call that IS this transfer: within MATCH_WINDOW of the file's time,
+    preferring the latest call that started no more than CALL_SLACK after it (an export can
+    stamp the transfer late, never early), else the nearest call after."""
+    if not t["when"]:
+        return None
+    timed = [(cd, c) for c in calls if (cd := _parse_dt(c.get("call_date")))
+             and abs(cd - t["when"]) <= MATCH_WINDOW]
+    before = [x for x in timed if x[0] <= t["when"] + CALL_SLACK]
+    if before:
+        return max(before, key=lambda x: x[0])[1]
+    return min(timed, key=lambda x: x[0])[1] if timed else None
 
 
 def _leads_by_phone(phones):
@@ -344,6 +371,14 @@ def check(transfers, start=None, end=None):
                       | {t["tld_id"] for t in transfers if t["tld_id"]})
     policies_by_lead = _policies_by_lead(lead_ids)
 
+    # The transfer's call in TLD, and the time the rest of the check uses: the TLD call time
+    # when there is one, else the file's time. CallDetails stamps the transfer itself (TLD
+    # call within 10 s for 1,565 of 1,598), but BlindTransfer stamps it later — up to an
+    # hour, >1 min late for 720 of 1,566 — which pushed real sales before the "transfer".
+    call_of = {i: _match_call(t, calls_by_phone.get(t["phone"], [])) for i, t in enumerate(transfers)}
+    at = {i: (_parse_dt(call_of[i].get("call_date")) if call_of[i] else None) or t["when"]
+          for i, t in enumerate(transfers)}
+
     # Same phone transferred more than once: a policy belongs to the LATEST transfer before
     # it was created (to the minute — comparing days credited an 11 AM sale to a 3 PM
     # transfer), so two fronters can never both be paid for one sale.
@@ -364,22 +399,13 @@ def check(transfers, start=None, end=None):
             # ANY future policy on the phone's leads to the transfer.
             if created.date() > d1:
                 continue
-            owners = [i for i in idxs if transfers[i]["when"] and transfers[i]["when"] <= created]
+            owners = [i for i in idxs if at[i] and at[i] <= created]
             if owners:
-                credited[max(owners, key=lambda i: transfers[i]["when"])].append(p)
+                credited[max(owners, key=lambda i: at[i])].append(p)
 
     rows = []
     for i, t in enumerate(transfers):
-        call = None
-        if t["when"]:
-            best = None
-            for c in calls_by_phone.get(t["phone"], []):
-                cd = _parse_dt(c.get("call_date"))
-                if cd:
-                    gap = abs(cd - t["when"])
-                    if gap <= MATCH_WINDOW and (best is None or gap < best[0]):
-                        best = (gap, c)
-            call = best[1] if best else None
+        call = call_of[i]
 
         new = sorted(credited.get(i, []), key=lambda p: str(p.get("date_created") or ""))
         live = [p for p in new if _is_live(p)]
@@ -388,7 +414,7 @@ def check(transfers, start=None, end=None):
             or t["tld_id"] or (leads_by_phone.get(t["phone"]) or [""])[-1]
 
         # Same-day rule: the first new policy has to be written the day of the transfer.
-        later_day = bool(live) and min(_parse_dt(p.get("date_created")) for p in live).date() != t["when"].date()
+        later_day = bool(live) and min(_parse_dt(p.get("date_created")) for p in live).date() != at[i].date()
         paid_pols = [] if later_day else [p for p in live if _is_verified(p)]
 
         if later_day:

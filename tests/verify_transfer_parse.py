@@ -53,4 +53,32 @@ other_details = csv_bytes([
 assert len(tc.parse_export(other_details, "x.csv")) == 1
 print("OK  unrelated Details column: rows kept")
 
+# BlindTransfer export: Phone is the transfer LINE (a few numbers), the customer is in
+# Caller ID (with a leading 1), Details is blank — one row per transfer.
+blind = ["Date,Rep,Campaign,Phone,Caller ID,Lead ID,Details"]
+for n in range(25):
+    line = "5613630948" if n % 5 else "5617851493"
+    blind.append(f"10/16/2026 2:{n:02d}:00 PM,rep{n % 3}@ihp,_MANUAL_CALL_,{line},1555010{n:04d},12345{n:04d},")
+rows = tc.parse_export(csv_bytes(blind), "BlindTransfer.csv")
+assert len(rows) == 25, len(rows)
+assert rows[0]["phone"] == "5550100000" and rows[7]["phone"] == "5550100007", rows[:2]
+assert all(r["tld_id"] == "" for r in rows)
+print("OK  BlindTransfer: customer read from Caller ID, not the transfer line")
+
+# A Caller ID column next to a real customer Phone column must not take over.
+many = ["Date,Rep,Phone,Caller ID"] + [f"10/16/2026 3:{n:02d}:00 PM,rep@ihp,555020{n:04d},5613630948" for n in range(25)]
+rows = tc.parse_export(csv_bytes(many), "x.csv")
+assert rows[3]["phone"] == "5550200003", rows[3]
+print("OK  customer Phone column kept when it varies")
+
+# Matching the TLD call: a late file time picks the call at/before it, not a closer callback.
+import datetime as dt
+t = {"when": dt.datetime(2026, 10, 16, 14, 30)}
+calls = [{"call_date": "2026-10-16 14:00:05", "id": "transfer"},
+         {"call_date": "2026-10-16 14:40:00", "id": "callback"}]
+assert tc._match_call(t, calls)["id"] == "transfer"
+t2 = {"when": dt.datetime(2026, 10, 16, 14, 0, 0)}
+assert tc._match_call(t2, [{"call_date": "2026-10-16 14:00:02", "id": "x"}])["id"] == "x"
+print("OK  TLD call match: late file time still finds the real transfer call")
+
 print("\nAll Transfer Check parsing checks passed.")
