@@ -514,7 +514,9 @@ def api_transfer_check():
             except ValueError:
                 raise ValueError(f"Could not read the {name} date '{v}'. Use YYYY-MM-DD.")
 
-        transfers = transfer_check.parse_export(f.read(), f.filename)
+        # mode=list: the fronters' own list (phone numbers, no dates) from its own import.
+        transfers = transfer_check.parse_export(f.read(), f.filename,
+                                                phone_list=request.form.get("mode") == "list")
         data = transfer_check.check(transfers, start=_d("start"), end=_d("end"))
         data["checked_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         token = uuid.uuid4().hex

@@ -117,6 +117,8 @@ LINE_PHONES_MAX = 5
 
 
 def _phone10(s):
+    if isinstance(s, float) and s.is_integer():
+        s = int(s)                        # Excel stores some numbers as 5551234567.0
     d = re.sub(r"\D", "", str(s or ""))
     return d[-10:] if len(d) >= 10 else ""
 
@@ -150,9 +152,10 @@ def _pick(header, names):
     return None
 
 
-def parse_export(data, filename=""):
+def parse_export(data, filename="", phone_list=False):
     """DialedIN export (CSV or .xlsx bytes) -> list of transfers. Raises ValueError if the
-    file doesn't look like a DialedIN export."""
+    file doesn't look like a DialedIN export. phone_list=True reads the fronters' own list
+    instead: phone numbers only, timed later from TLD (see _phone_list)."""
     if filename.lower().endswith((".xlsx", ".xlsm")):
         from openpyxl import load_workbook
         ws = load_workbook(io.BytesIO(data), read_only=True, data_only=True).active
@@ -166,10 +169,15 @@ def parse_export(data, filename=""):
         records = list(reader)
 
     col = {k: _pick(header, v) for k, v in COLS.items()}
+    if phone_list:
+        if not col["phone"]:
+            raise ValueError("This list needs a phone column (Phone or Phone Number).")
+        return _phone_list(records, col)
     if not col["phone"] or not col["when"]:
         raise ValueError("This doesn't look like a DialedIN export — it needs a "
                          "phone column (PrimaryPhone or Phone) and a date column "
-                         "(CallDate or Date).")
+                         "(CallDate or Date). For the fronters' own list, use "
+                         "\"Check fronter list\" instead.")
 
     details = _pick(header, [DETAILS_COL])
     if details and not any(str(r.get(details) or "").strip().lower() == FRONTER_DETAILS
@@ -198,6 +206,59 @@ def parse_export(data, filename=""):
         })
     if not out:
         raise ValueError("No rows with a phone number were found in that file.")
+    return out
+
+
+LIST_REP = "(fronter list)"
+
+
+def _phone_list(records, col):
+    """A list with phone numbers but no dates — e.g. the fronters' own log. One entry per
+    number (164 of 1,344 were listed twice on 10/15-10/17); check() times each one from
+    TLD's inbound calls in the chosen dates. Customer names are never read."""
+    out, seen = [], set()
+    for r in records:
+        phone = _phone10(r.get(col["phone"]))
+        if not phone or phone in seen:
+            continue
+        seen.add(phone)
+        out.append({
+            "phone": phone,
+            "rep": (str(r.get(col["rep"]) or "").strip() if col["rep"] else "") or LIST_REP,
+            "campaign": str(r.get(col["campaign"]) or "").strip() if col["campaign"] else "",
+            "when": None,
+            "tld_id": "",
+            "listed": True,
+        })
+    if not out:
+        raise ValueError("No rows with a phone number were found in that file.")
+    return out
+
+
+def _time_phone_list(listed, d0, d1):
+    """Turn a dateless phone list into transfers: one per number per day it called in to
+    TLD between d0 and d1, timed at that day's first inbound call. Numbers that never
+    called in stay as one undated entry, which ends up Not found."""
+    calls = defaultdict(list)
+    for batch in _chunks(sorted({t["phone"] for t in listed})):
+        resp = config.egress_get(CALL_LOG, {
+            "columns": ["call_date", "phone_number"], "call_direction": "INBOUND",
+            "phone_number": batch, "limit": 50000,
+            "call_date": f"{d0} 00:00:00", "call_date_end": f"{d1} 23:59:59"}, timeout=300)
+        for r in _rows(resp):
+            p, cd = _phone10(r.get("phone_number")), _parse_dt(r.get("call_date"))
+            if p and cd:
+                calls[p].append(cd)
+    out = []
+    for t in listed:
+        first = {}
+        for cd in calls.get(t["phone"], []):
+            if cd.date() not in first or cd < first[cd.date()]:
+                first[cd.date()] = cd
+        if not first:
+            out.append(dict(t))
+        for day in sorted(first):
+            out.append(dict(t, when=first[day]))
     return out
 
 
@@ -325,13 +386,26 @@ def check(transfers, start=None, end=None):
     behaviour and trusts the export. Dropped rows that already have a sale are reported in
     `dropped_sales`, so paid work can never fall out of a pay week silently.
     """
-    whens = [t["when"] for t in transfers if t["when"]]
-    if not whens:
-        raise ValueError("None of the CallDate values could be read as a date.")
-    file_d0, file_d1 = min(whens).date(), max(whens).date()
-
     dropped, dropped_rows = 0, []
-    if start or end:
+    listed = any(t.get("listed") for t in transfers)
+    if listed:
+        # The fronters' own list has no dates: the chosen dates ARE the range, and each
+        # number is timed from its inbound calls in TLD.
+        if not (start and end):
+            raise ValueError("The fronter list has no dates of its own — pick the From and "
+                             "To dates first.")
+        if start > end:
+            raise ValueError("The start date is after the end date.")
+        transfers = _time_phone_list(transfers, start, end)
+        d0, d1 = file_d0, file_d1 = start, end
+    else:
+        whens = [t["when"] for t in transfers if t["when"]]
+        if not whens:
+            raise ValueError("None of the CallDate values could be read as a date.")
+        file_d0, file_d1 = min(whens).date(), max(whens).date()
+    if listed:
+        pass                              # range already set from the chosen dates
+    elif start or end:
         d0 = start or file_d0
         d1 = end or file_d1
         if d0 > d1:

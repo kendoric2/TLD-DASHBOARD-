@@ -1453,15 +1453,21 @@ function xferArrows(attr, activeKey, dir){
   });
 }
 
-async function runTransferCheck(){
-  const file = $("#xferFile").files[0];
+// mode "list" = the fronters' own list (phone numbers only), from its own import.
+async function runTransferCheck(mode){
+  const isList = mode === "list";
+  const file = $(isList ? "#xferListFile" : "#xferFile").files[0];
   const sum = $("#xferSummary");
-  if (!file){ sum.textContent = "Choose the DialedIN export file first."; return; }
+  if (!file){ sum.textContent = isList ? "Choose the fronters' list first." : "Choose the DialedIN export file first."; return; }
+  if (isList && !($("#xferStart").value && $("#xferEnd").value)){
+    sum.textContent = "The fronters' list has no dates — set the pay week dates first."; return;
+  }
   sum.textContent = `Checking ${file.name} against TLD… (a few seconds for a few hundred transfers)`;
-  $("#xferRun").disabled = true;
+  $("#xferRun").disabled = $("#xferListRun").disabled = true;
   try {
     const fd = new FormData();
     fd.append("file", file);
+    if (isList) fd.append("mode", "list");
     // The pay week wins over the file's own dates — see the note in transfer_check.check().
     fd.append("start", $("#xferStart").value || "");
     fd.append("end", $("#xferEnd").value || "");
@@ -1474,7 +1480,7 @@ async function runTransferCheck(){
   } catch (err){
     sum.textContent = "Could not run the transfer check: " + err;
   } finally {
-    $("#xferRun").disabled = false;
+    $("#xferRun").disabled = $("#xferListRun").disabled = false;
   }
 }
 
@@ -1638,7 +1644,8 @@ document.querySelectorAll("th[data-xsort]").forEach(th => th.addEventListener("c
   else { xferSortKey = k; xferSortDir = (k === "transfer_time" || k === "date_sold" || k === "lead_id") ? -1 : 1; }
   if (xferData) renderXferRows();
 }));
-$("#xferRun").addEventListener("click", runTransferCheck);
+$("#xferRun").addEventListener("click", () => runTransferCheck());
+$("#xferListRun").addEventListener("click", () => runTransferCheck("list"));
 $("#xferResultFilter").addEventListener("change", () => { if (xferData) renderXferRows(); });
 $("#xferLineFilter").addEventListener("change", () => { if (xferData) renderXferRows(); });
 $("#xferRepFilter").addEventListener("change", e => {

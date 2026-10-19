@@ -195,6 +195,13 @@
         <button class="btn dark" id="xferRun">Check transfers</button>
         <button class="btn export" id="xferExport" hidden title="Payroll summary + every transfer, as an Excel file">&#8681; Export Excel</button>
       </span>
+      <span class="detail-controls" style="margin-bottom:10px">
+        <label class="hint" for="xferListFile">Fronters' own list (phone numbers, no dates)</label>
+        <input type="file" id="xferListFile" accept=".csv,.xlsx" aria-label="Fronters' transfer list" />
+        <button class="btn dark" id="xferListRun"
+                title="Each number is timed from its inbound calls in TLD between the pay week dates above">Check fronter list</button>
+        <span class="hint">uses the pay week dates above</span>
+      </span>
       <div class="kpis vendor-cost" id="xferKpis" style="grid-template-columns:repeat(6,1fr)"></div>
       <div class="table-scroll" id="xferRepWrap" style="max-height:440px" hidden>
         <table>

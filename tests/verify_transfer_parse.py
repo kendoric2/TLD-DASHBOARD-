@@ -81,4 +81,23 @@ t2 = {"when": dt.datetime(2026, 10, 16, 14, 0, 0)}
 assert tc._match_call(t2, [{"call_date": "2026-10-16 14:00:02", "id": "x"}])["id"] == "x"
 print("OK  TLD call match: late file time still finds the real transfer call")
 
+# The fronters' own list: name + phone, no dates. Only accepted through its own import.
+flist = csv_bytes(["FULL NAME,PHONE NUMBER,NOTES",
+                   "Test Person,(555) 010-0001,",
+                   "Test Person,555-010-0001,HUSBAND AND WIFE",
+                   "Other Person,555 010 0002,"])
+try:
+    tc.parse_export(flist, "list.csv")
+    raise AssertionError("a dateless list must not go through the regular upload")
+except ValueError as e:
+    assert "fronter list" in str(e), e
+rows = tc.parse_export(flist, "list.csv", phone_list=True)
+assert [r["phone"] for r in rows] == ["5550100001", "5550100002"], rows   # de-duplicated
+assert all(r["when"] is None and r["listed"] and r["rep"] == tc.LIST_REP for r in rows)
+assert not any("Person" in str(v) for r in rows for v in r.values()), "customer names are never kept"
+print("OK  fronter list: own import only, de-duplicated, names not kept")
+
+assert tc._phone10(5550100003.0) == "5550100003"
+print("OK  Excel number-stored phones read correctly")
+
 print("\nAll Transfer Check parsing checks passed.")
