@@ -7,6 +7,7 @@ another vendor), so the transfers never show under the MAPD / Manhattan Life ven
 works backwards from DialedIN's own list of transfers instead:
 
   1. LEADS     every TLD lead for each phone          leads, "phone" takes a list
+               + linked leads, both directions         linked_lead_id / lead_linked_lead_id
   2. CALL LOG  the inbound call from that phone,      tldialer_call_log, "phone_number"
                closest to DialedIN's CallDate          takes a list
   3. POLICIES  policies on those leads                 policies, "lead_id" takes a list
@@ -192,18 +193,42 @@ def _chunks(seq, n=CHUNK):
         yield seq[i:i + n]
 
 
+def _has_id(v):
+    return str(v or "").strip() not in ("", "0", "None")
+
+
 def _leads_by_phone(phones):
-    """phone -> [lead_id, …] for every TLD lead on each phone (leads takes a phone list)."""
+    """phone -> [lead_id, …] for every TLD lead on each phone (leads takes a phone list),
+    plus any lead those leads are linked to (linked_lead_id) — a linked lead can carry a
+    different phone, so the phone lookup alone would miss a sale written on it."""
     out = defaultdict(list)
     for batch in _chunks(phones):
         resp = config.egress_get("leads", {
-            "columns": ["lead_id", "phone", "date_created"],
+            "columns": ["lead_id", "phone", "date_created", "linked_lead_id"],
             "phone": batch, "limit": len(batch) * 50}, timeout=180)
         for r in _rows(resp):
             p = _phone10(r.get("phone"))
             if p and r.get("lead_id"):
                 out[p].append(str(r["lead_id"]).strip())
-    return out
+                if _has_id(r.get("linked_lead_id")):
+                    out[p].append(str(r["linked_lead_id"]).strip())
+    return {p: list(dict.fromkeys(ids)) for p, ids in out.items()}
+
+
+def _add_linked_back(leads_by_phone, d0, d1):
+    """The other direction: a policy written d0..d1 on a lead that is linked TO one of these
+    phones' leads (the policy's lead_linked_lead_id). Adds that lead to the phone. Pulled by
+    date_created, which returns every policy created in the range (471 vs 427 for
+    10/15-10/18 with the date/date_sold filter)."""
+    phone_of = {lid: p for p, ids in leads_by_phone.items() for lid in ids}
+    resp = config.egress_get("policies", {
+        "columns": ["lead_id", "lead_linked_lead_id"], "limit": 200000,
+        "date_created": f"{d0} 00:00:00", "date_created_end": f"{d1} 23:59:59"}, timeout=240)
+    for r in _rows(resp):
+        p = phone_of.get(str(r.get("lead_linked_lead_id") or "").strip())
+        lid = str(r.get("lead_id") or "").strip()
+        if p and lid and lid not in leads_by_phone[p]:
+            leads_by_phone[p].append(lid)
 
 
 def _policies_by_lead(lead_ids):
@@ -296,8 +321,9 @@ def check(transfers, start=None, end=None):
 
     phones = sorted({t["phone"] for t in transfers})
 
-    # 1. every TLD lead for each phone
+    # 1. every TLD lead for each phone, plus linked leads in both directions
     leads_by_phone = _leads_by_phone(phones)
+    _add_linked_back(leads_by_phone, d0, d1)
 
     # 2. inbound calls from those phones (a day of slack each side)
     calls_by_phone = defaultdict(list)
