@@ -319,8 +319,8 @@ function renderKPIs(k) {
        note:"Lead cost this period"},
     {label:"Blended CPA",       value: wait(k.blended_cpa, money2),
        note:"Total spend ÷ sales"},
-    {label:"Avg Premium · GTL", value: money0(k.avg_gtl_premium),
-       note:"GTL is the only carrier with premium"},
+    {label:"Avg Premium · GTL + Manhattan", value: money0(k.avg_gtl_premium),
+       note:"GTL and Manhattan Life policies"},
   ];
   $("#kpis").innerHTML = cards.map(c => `
     <div class="kpi">

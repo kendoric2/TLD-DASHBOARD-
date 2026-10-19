@@ -27,7 +27,7 @@
     "avg_gtl_premium": {
       "endpoint": "policies",
       "date_bounded": true,
-      "payload": { "carrier": "GTL", "aggregates": true, "aggregate": true, "columns": ["tql_avg_premium"] }
+      "payload": { "carrier": ["GTL", "MANHATTAN"], "aggregates": true, "aggregate": true, "columns": ["tql_avg_premium"] }
     },
 
     "policies_by_carrier": {

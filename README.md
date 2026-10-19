@@ -10,7 +10,7 @@ live.
 ## What it does
 
 - **Key Numbers** — six headline tiles: Policies Sold · Billable Calls · Conversion Rate ·
-  Total Spend · Blended CPA · Avg Premium (GTL).
+  Total Spend · Blended CPA · Avg Premium (GTL + Manhattan Life).
 - **Policies by Carrier** — a vertical bar chart in the carriers' brand colors, with each
   carrier's total labeled on top.
 - **Enrollments** — enrollments per enroller (fronter), plus a running total for the day.
