@@ -27,6 +27,12 @@ TLD_API_KEY  = os.getenv("TLD_API_KEY", "").strip()
 PORT       = int(os.getenv("PORT", "5050"))
 NO_BROWSER = bool(os.getenv("NO_BROWSER"))
 
+# When hosted behind the iHealth Plans website (/admin/tld), the site's proxy sends this
+# key on every request and anything without it is refused, so the bare hosting URL shows
+# nothing. Leave it unset locally.
+PROXY_KEY_HEADER = "X-Dashboard-Key"
+PROXY_KEY = os.getenv("DASHBOARD_PROXY_KEY", "").strip()
+
 # --- Business constants ------------------------------------------------------
 FALCON_VENDOR_ID   = 14646                 # the "Falcon" lead source
 CONVERTED_STATUSES = {"active", "sale"}    # a billable Falcon lead = converted if its status is one of these

@@ -1,8 +1,21 @@
 # Deployment Guide — putting the dashboard online for the team
 
-**Status: not started.** This is the step-by-step for taking the dashboard from a local Mac
-tool to a private website your managers can open. Read it through first; nothing in the
-code has been changed for deployment yet.
+> **Current plan (Oct 2026): behind the iHealth Plans website.** The dashboard is hosted on
+> Render (Steps 1–3, `render.yaml` is in the repo) and shown at **`/admin/tld`** on the
+> website, behind the site's own Google admin login. That replaces Steps 4–5 (own domain +
+> Cloudflare Access):
+>
+> 1. Deploy this repo on Render from `render.yaml` (Blueprint). Fill `TLD_BASE_URL`,
+>    `TLD_API_ID`, `TLD_API_KEY`; Render generates `DASHBOARD_PROXY_KEY`.
+> 2. On the website's host, set `LH_DASHBOARD_URL` (the `onrender.com` URL, no trailing
+>    slash) and `LH_DASHBOARD_KEY` (the same value as `DASHBOARD_PROXY_KEY`).
+> 3. With the key set, the Render URL refuses every request except `/health` — data is only
+>    reachable through the signed-in website. Locally, leave the key unset.
+>
+> The rest of this guide is the original stand-alone plan, kept for reference.
+
+**Status: code prep done (gunicorn, `render.yaml`, proxy key).** This is the step-by-step for
+taking the dashboard from a local Mac tool to a private website your managers can open.
 
 > Supersedes `DEPLOYMENT-PLAN.md`. That plan centred on a Postgres database plus a
 > background worker that pre-stored every day's numbers. We deliberately removed persistent

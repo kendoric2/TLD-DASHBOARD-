@@ -18,6 +18,7 @@ JavaScript (static/dashboard.js)        =  GUI LAYER
 Runs in DEMO mode (sample data) until TLD credentials are filled into .env.
 """
 import os
+import hmac
 import datetime
 import threading
 import webbrowser
@@ -39,6 +40,18 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app = Flask(__name__,
             template_folder=os.path.join(_ROOT, "templates"),
             static_folder=os.path.join(_ROOT, "static"))
+
+
+@app.before_request
+def _require_proxy_key():
+    """Hosted behind the website, only requests carrying the site's key get through
+    (/health stays open for the host's health check — it shows no data)."""
+    if not config.PROXY_KEY or request.path == "/health":
+        return None
+    sent = request.headers.get(config.PROXY_KEY_HEADER, "")
+    if not hmac.compare_digest(sent.encode(), config.PROXY_KEY.encode()):
+        return jsonify({"error": "Open the dashboard from the iHealth Plans admin site."}), 403
+    return None
 
 RANGE_LABELS = {
     "today": "Today",

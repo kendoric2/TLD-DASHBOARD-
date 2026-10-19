@@ -191,7 +191,7 @@ async function load(force) {
   // Fire all three requests AT ONCE — none of them depends on the others. The CPA report is
   // the slow one (~30s on a big month), so starting it now instead of after the dashboard
   // comes back takes that time off the total wait.
-  const dashReq = fetch(`/api/dashboard?${qsFor(sel)}`);
+  const dashReq = fetch(`api/dashboard?${qsFor(sel)}`);
   const cpaReq = fetchCPA(sel, force);
   if (boardOpen) boardLoad();
   try {
@@ -238,7 +238,7 @@ function armAuto(sel) {
 // Kick off the heavy CPA report and hand back a promise of its JSON. Started alongside the
 // dashboard request (they're independent) and applied once the page data is in place.
 function fetchCPA(sel, force) {
-  return fetch(`/api/agent_cpa?${qsFor(sel)}${force ? "&force=1" : ""}`)
+  return fetch(`api/agent_cpa?${qsFor(sel)}${force ? "&force=1" : ""}`)
     .then(r => r.json())
     .catch(() => null);          // leave the "…" placeholders — not fatal
 }
@@ -738,7 +738,7 @@ async function boardLoad(){
   try {
     const carrier = $("#boardCarrier") ? $("#boardCarrier").value : "";
     const qs = `range=custom&start=${s}&end=${e}` + (carrier ? `&carrier=${encodeURIComponent(carrier)}` : "");
-    const res = await fetch(`/api/sales_board?${qs}`);
+    const res = await fetch(`api/sales_board?${qs}`);
     const data = await res.json();
     if (data.error && !data.board){ list.innerHTML = boardMsg(data.error); return; }
     renderBoard(data);
@@ -855,7 +855,7 @@ async function loadVendors(){
   $("#dispoWrap").hidden = true;                        // dispo is per-range; make them re-load
   try {
     const qs = `range=custom&start=${s}&end=${e}` + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
-    const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
+    const d = await fetch(`api/vendors?${qs}`).then(r => r.json());
     if (d.error){ sum.textContent = d.error; return; }
     renderVendors(d);
     loadVendorCost(s, e, v);          // slow report — fills in behind the lead table
@@ -875,7 +875,7 @@ async function loadVendorCost(s, e, v){
                 + card("Sales", "…", "") + card("CPA", "…", "");
   try {
     const qs = `range=custom&start=${s}&end=${e}&cost=1` + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
-    const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
+    const d = await fetch(`api/vendors?${qs}`).then(r => r.json());
     const c = d.cost;
     if (!c){ box.innerHTML = ""; return; }
     const who = v ? ($("#vendorPick").selectedOptions[0] || {}).text || "vendor" : "all vendors";
@@ -937,7 +937,7 @@ async function loadBilled(){
   sum.textContent = "Loading billed calls…";
   try {
     const qs = `range=custom&start=${s}&end=${e}&billed=1` + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
-    const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
+    const d = await fetch(`api/vendors?${qs}`).then(r => r.json());
     const b = d.billed;
     if (!b){ sum.textContent = "Could not load billed calls."; return; }
     const t = b.summary || {};
@@ -1025,7 +1025,7 @@ async function loadDispo(){
     const dir = $("#dispoDirection") ? $("#dispoDirection").value : "INBOUND";
     const qs = `range=custom&start=${s}&end=${e}&dispo=1&direction=${dir}`
       + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
-    const d = await fetch(`/api/vendors?${qs}`).then(r => r.json());
+    const d = await fetch(`api/vendors?${qs}`).then(r => r.json());
     const dp = d.dispo;
     if (!dp){ sum.textContent = "Could not load dispositions."; return; }
     const rows = dp.dispositions || [];
@@ -1057,7 +1057,7 @@ async function loadDetail(agent){
   body.innerHTML = "";
   try {
     const qs = `range=custom&start=${s}&end=${e}` + (who ? `&agent=${encodeURIComponent(who)}` : "");
-    const d = await fetch(`/api/agent_detail?${qs}`).then(r => r.json());
+    const d = await fetch(`api/agent_detail?${qs}`).then(r => r.json());
     if (d.error){ sum.textContent = d.error; return; }
     fillDetailPeople(d.people || [], who);
     if (!who){
@@ -1152,7 +1152,7 @@ async function loadAgentDispo(){
   sum.textContent = "Loading dispositions…";
   $("#agentDispoWrap").hidden = true;
   try {
-    const d = await fetch(`/api/agent_detail?range=custom&start=${s}&end=${e}`
+    const d = await fetch(`api/agent_detail?range=custom&start=${s}&end=${e}`
       + `&agent=${encodeURIComponent(who)}&dispo=1`).then(r => r.json());
     const dp = d.dispo || {};
     const rows = dp.dispositions || [];
@@ -1226,7 +1226,7 @@ const LIVE_STATUS_TITLE = {INCALL: "On a Call", DISPO: "Wrapping Up", READY: "Re
 async function loadLiveAgents(){
   const sum = $("#liveSummary");
   try {
-    const d = await fetch("/api/live_agents").then(r => r.json());
+    const d = await fetch("api/live_agents").then(r => r.json());
     if (d.error){ sum.textContent = d.error; return; }
     if (d.demo){ sum.textContent = "Demo mode — add your TLDCRM credentials to load this."; return; }
     liveAgentsCache = d.agents || [];
@@ -1308,18 +1308,18 @@ $("#vendorPick").addEventListener("change", loadVendors);
 $("#vendorExport").addEventListener("click", () => {
   const {s, e, v} = vendorRange();
   if (!s || !e) return;
-  window.location = `/api/vendors/export?range=custom&start=${s}&end=${e}`
+  window.location = `api/vendors/export?range=custom&start=${s}&end=${e}`
     + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
 });
 $("#stateReportExport").addEventListener("click", () => {
   const {s, e} = vendorRange();          // always all vendors, so the vendor filter is ignored
   if (!s || !e) return;
-  window.location = `/api/vendors/state_report/export?range=custom&start=${s}&end=${e}`;
+  window.location = `api/vendors/state_report/export?range=custom&start=${s}&end=${e}`;
 });
 $("#billedLoad").addEventListener("click", loadBilled);
 $("#billedExport").addEventListener("click", () => {
   const {s, e, v} = vendorRange();
-  window.location = `/api/vendors/billed/export?range=custom&start=${s}&end=${e}`
+  window.location = `api/vendors/billed/export?range=custom&start=${s}&end=${e}`
     + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
 });
 $("#dispoLoad").addEventListener("click", loadDispo);
@@ -1327,14 +1327,14 @@ $("#dispoDirection").addEventListener("change", () => { if (!$("#dispoWrap").hid
 $("#dispoExport").addEventListener("click", () => {
   const {s, e, v} = vendorRange();
   const dir = $("#dispoDirection").value;
-  window.location = `/api/vendors/dispo/export?range=custom&start=${s}&end=${e}&direction=${dir}`
+  window.location = `api/vendors/dispo/export?range=custom&start=${s}&end=${e}&direction=${dir}`
     + (v ? `&vendor_id=${encodeURIComponent(v)}` : "");
 });
 $("#agentDispoExport").addEventListener("click", () => {
   const who = $("#detailAgent").value;
   const s = pickerISO("detailStart"), e = pickerISO("detailEnd");
   if (!who) return;
-  window.location = `/api/agent_detail/dispo/export?range=custom&start=${s}&end=${e}`
+  window.location = `api/agent_detail/dispo/export?range=custom&start=${s}&end=${e}`
     + `&agent=${encodeURIComponent(who)}`;
 });
 ["vendorStart","vendorEnd"].forEach(id => { const el = $("#"+id);
@@ -1346,7 +1346,7 @@ $("#detailExport").addEventListener("click", () => {
   if (!who){ $("#detailSummary").textContent = "Choose a person before exporting."; return; }
   if (!s || !e){ $("#detailSummary").textContent = "Pick a start and end date."; return; }
   // hand the server the sort we're currently showing so the file matches the screen
-  window.location = `/api/agent_detail/export?range=custom&start=${s}&end=${e}`
+  window.location = `api/agent_detail/export?range=custom&start=${s}&end=${e}`
     + `&agent=${encodeURIComponent(who)}&sort=${detailSortKey}&dir=${detailSortDir}`;
 });
 $("#detailAgent").addEventListener("change", () => { loadDetail(); $("#agentDispoWrap").hidden = true;
@@ -1354,13 +1354,13 @@ $("#detailAgent").addEventListener("change", () => { loadDetail(); $("#agentDisp
 $("#activeExport").addEventListener("click", () => {
   const sel = currentSel();
   if (sel.key === "custom" && !validCustom(sel)) return;
-  window.location = `/api/active/export?${qsFor(sel)}`;
+  window.location = `api/active/export?${qsFor(sel)}`;
 });
 $("#stateExport").addEventListener("click", () => {
   const sel = currentSel();
   if (sel.key === "custom" && !validCustom(sel)) return;
   const withAgents = $("#stateIncludeAgents").checked ? "&agents=1" : "";
-  window.location = `/api/state/export?${qsFor(sel)}${withAgents}`;
+  window.location = `api/state/export?${qsFor(sel)}${withAgents}`;
 });
 $("#agentDispoLoad").addEventListener("click", loadAgentDispo);
 ["detailStart","detailEnd"].forEach(id => { const el = $("#"+id);
@@ -1471,7 +1471,7 @@ async function runTransferCheck(mode){
     // The pay week wins over the file's own dates — see the note in transfer_check.check().
     fd.append("start", $("#xferStart").value || "");
     fd.append("end", $("#xferEnd").value || "");
-    const d = await fetch("/api/transfer_check", {method: "POST", body: fd}).then(r => r.json());
+    const d = await fetch("api/transfer_check", {method: "POST", body: fd}).then(r => r.json());
     if (d.error){ sum.textContent = d.error; return; }
     xferData = d;
     xferRep = null;
@@ -1658,5 +1658,5 @@ $("#xferAgentFilter").addEventListener("change", e => {
 });
 $("#xferClearRep").addEventListener("click", () => { xferRep = null; xferAgent = null; renderXferReps(); renderXferRows(); });
 $("#xferExport").addEventListener("click", () => {
-  if (xferData && xferData.token) window.location = `/api/transfer_check/export?token=${xferData.token}`;
+  if (xferData && xferData.token) window.location = `api/transfer_check/export?token=${xferData.token}`;
 });
