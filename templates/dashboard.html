@@ -198,7 +198,7 @@
       <div class="kpis vendor-cost" id="xferKpis" style="grid-template-columns:repeat(6,1fr)"></div>
       <div class="table-scroll" id="xferRepWrap" style="max-height:440px" hidden>
         <table>
-          <thead><tr><th data-xrsort="rep">Fronter</th><th class="num" data-xrsort="transfers">Transfers</th><th class="num" data-xrsort="found">Found in TLD</th><th class="num" data-xrsort="payable">Paid Sales</th><th class="num" data-xrsort="pol_manhattan" title="Verified policies on a Manhattan Life or GTL carrier">&middot; Manhattan</th><th class="num" data-xrsort="pol_mapd" title="Verified policies on any other carrier">&middot; MAPD</th><th class="num" data-xrsort="awaiting">Awaiting Verification</th><th class="num" data-xrsort="pending">Pending</th><th class="num" data-xrsort="callback" title="Sold, but only after another call with the customer — not paid">Callback</th><th class="num" data-xrsort="not_found">Not Found</th></tr></thead>
+          <thead><tr><th data-xrsort="rep">Fronter</th><th class="num" data-xrsort="transfers">Transfers</th><th class="num" data-xrsort="found">Found in TLD</th><th class="num" data-xrsort="payable">Paid Sales</th><th class="num" data-xrsort="pol_manhattan" title="Verified policies on a Manhattan Life or GTL carrier">&middot; Manhattan</th><th class="num" data-xrsort="pol_mapd" title="Verified policies on any other carrier">&middot; MAPD</th><th class="num" data-xrsort="awaiting">Awaiting Verification</th><th class="num" data-xrsort="pending">Pending</th><th class="num" data-xrsort="later_day" title="Sold, but on a later day than the transfer — not paid">Later Day</th><th class="num" data-xrsort="not_found">Not Found</th></tr></thead>
           <tbody id="xferReps"></tbody>
           <tfoot id="xferRepTotals"></tfoot>
         </table>
@@ -229,7 +229,7 @@
           <option value="Paid">Paid</option>
           <option value="Awaiting verification">Awaiting verification</option>
           <option value="Pending">Pending</option>
-          <option value="Callback – not paid">Callback – not paid</option>
+          <option value="Later day – not paid">Later day – not paid</option>
           <option value="No sale">No sale</option>
           <option value="Not found">Not found</option>
         </select>
