@@ -20,7 +20,9 @@ import threading
 import datetime
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # src/ -> project root
-LOG_DIR = os.path.join(_ROOT, "logs")
+# On Vercel (inside the website) only /tmp is writable; see cache.py.
+_DATA = os.getenv("DASHBOARD_DATA_DIR") or ("/tmp/tld-dashboard" if os.getenv("VERCEL") else _ROOT)
+LOG_DIR = os.path.join(_DATA, "logs")
 LOG_PATH = os.path.join(LOG_DIR, "egress.csv")
 HEADER = ["datetime", "endpoint", "query", "range", "source", "status", "ms", "count"]
 

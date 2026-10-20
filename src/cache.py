@@ -30,7 +30,9 @@ import hashlib
 import datetime
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CACHE_DIR = os.path.join(_ROOT, "cache")
+# On Vercel (inside the website) only /tmp is writable; it lasts as long as the instance.
+_DATA = os.getenv("DASHBOARD_DATA_DIR") or ("/tmp/tld-dashboard" if os.getenv("VERCEL") else _ROOT)
+CACHE_DIR = os.path.join(_DATA, "cache")
 
 
 def is_final(end):
