@@ -425,6 +425,40 @@ class TLDCRMClient:
         out.sort(key=lambda v: v["name"].lower())
         return out
 
+    def vendor_sold_policies(self, start, end, vendor_id=None):
+        """Every sold policy behind the Vendors table's Sold column: the leads created in the
+        range (same pull and filter as vendor_leads) that produced a policy, and each
+        sale-stage policy on them with its date sold. One row per policy, so a lead that
+        bought twice shows twice. The policy can be dated after the range; the lead is what
+        the range selects, exactly as the Sold count does."""
+        body = {"columns": ["lead_id", "phone", "policies_sold"],
+                "date_created": f"{start} 00:00:00", "date_created_end": f"{end} 23:59:59",
+                "limit": 200000}
+        if vendor_id:
+            body["vendor_id"] = vendor_id
+        rows = config.egress_get("leads", body, timeout=max(self.timeout, 240))
+        phone_of = {}
+        for r in (rows if isinstance(rows, list) else []):
+            if isinstance(r, dict) and r.get("lead_id") and _num(r.get("policies_sold")) >= 1:
+                phone_of[str(r["lead_id"]).strip()] = str(r.get("phone") or "").strip()
+
+        ids = sorted(phone_of)
+        policies = []
+        for i in range(0, len(ids), 50):                   # the policies endpoint takes lead_id as a list
+            resp = config.egress_get("policies", {
+                "columns": ["policy_id", "lead_id", "date_sold", "stage"],
+                "lead_id": ids[i:i + 50], "limit": 20000}, timeout=max(self.timeout, 180))
+            policies.extend(resp if isinstance(resp, list) else [])
+
+        out = []
+        for p in _dedupe_rows(policies):                    # sale stage, one row per policy
+            lead = str(p.get("lead_id") or "").strip()
+            if lead in phone_of:
+                out.append({"date_sold": str(p.get("date_sold") or "")[:10],
+                            "phone": phone_of[lead]})
+        out.sort(key=lambda r: r["date_sold"])
+        return out
+
     def vendor_leads(self, start, end, vendor_id=None):
         """Lead intake for the range: totals plus a per-vendor split. Leads are filtered on
         date_created (TLD's leads exception). 'billable' means the lead cleared buffer time

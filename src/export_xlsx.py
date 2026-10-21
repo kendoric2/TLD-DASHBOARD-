@@ -255,9 +255,10 @@ VENDOR_COLUMNS = [
 ]
 
 
-def build_vendors(start, end, vendor_label, rows, totals):
+def build_vendors(start, end, vendor_label, rows, totals, sold_policies=None):
     """Vendors tile: lead intake and price/status per vendor for the range — same rows,
-    same Sold/Billable %, as the on-screen table (and its Totals row)."""
+    same Sold/Billable %, as the on-screen table (and its Totals row). A second sheet,
+    Sold Policies, lists every sold policy behind the Sold column: date sold and phone."""
     wb = Workbook()
     ws = wb.active
     ws.title = _sheet_title(vendor_label or "Vendors")
@@ -283,6 +284,18 @@ def build_vendors(start, end, vendor_label, rows, totals):
         t_pct = round(t_sold / t_billable * 100, 1) if t_billable else 0
         ws.append([])
         ws.append(["TOTAL", t.get("leads", 0), t_billable, t_sold, t_pct, "", ""])
+
+    if sold_policies is not None:
+        ws2 = wb.create_sheet("Sold Policies")
+        ws2.append([f"Sold policies: {vendor_label or 'all vendors'}, leads created {start} to {end}"])
+        ws2.append([f"{len(sold_policies):,} policies on the {t.get('sold', 0):,} leads that produced one"])
+        ws2.append([])
+        ws2.append(["Date Sold", "Phone Number"])
+        for r in sold_policies:
+            ws2.append([r["date_sold"], r["phone"]])
+            ws2.cell(row=ws2.max_row, column=2).number_format = "@"   # text, so Excel keeps every digit
+        ws2.column_dimensions["A"].width = 14
+        ws2.column_dimensions["B"].width = 16
 
     buf = io.BytesIO()
     wb.save(buf)

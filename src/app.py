@@ -261,7 +261,8 @@ def api_vendors_export():
             rows.append({**r, "price": c.get("price_inbound") or c.get("price"),
                         "status": c.get("status")})
 
-        buf, fname = export_xlsx.build_vendors(start, end, name, rows, leads.get("totals") or {})
+        sold = client.vendor_sold_policies(start, end, vendor)
+        buf, fname = export_xlsx.build_vendors(start, end, name, rows, leads.get("totals") or {}, sold)
         return send_file(
             buf, as_attachment=True, download_name=fname,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
