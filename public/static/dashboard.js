@@ -11,6 +11,36 @@ const C = n => getComputedStyle(document.documentElement).getPropertyValue(n).tr
 const money2 = v => "$" + Number(v || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
 let charts = {};          // keep chart instances so we can destroy before redraw
+
+/* Night mode. index.html sets data-theme before the page paints; this keeps the
+   header button, the date picker and the charts in step with it. Chart text and
+   lines read the page's colors, so a switch recolors the charts already drawn. */
+function applyTheme(dark){
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  const btn = $("#themeToggle");
+  if (btn){
+    btn.innerHTML = dark ? "&#9788;" : "&#9790;";
+    btn.title = dark ? "Day mode" : "Night mode";
+    btn.setAttribute("aria-pressed", String(dark));
+  }
+  const fp = document.getElementById("flatpickrDark");
+  if (fp) fp.disabled = !dark;
+  if (typeof Chart === "undefined") return;
+  Chart.defaults.color = C("--muted");
+  Chart.defaults.borderColor = C("--line");
+  for (const chart of Object.values(charts)){
+    if (!chart) continue;
+    if (chart.config.type === "pie") chart.data.datasets.forEach(ds => { ds.borderColor = C("--card"); });
+    chart.update("none");
+  }
+}
+applyTheme(document.documentElement.getAttribute("data-theme") === "dark");
+// Follow the computer's setting as it changes, until a choice is saved here
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
+  let saved = null;
+  try { saved = localStorage.getItem("theme"); } catch (err) {}
+  if (!saved) applyTheme(e.matches);
+});
 let selectedCarrier = null;  // carrier slice currently shown in the detail panel
 let selectedState = null;    // state currently shown in the map's detail panel
 let stateByAbbr = {};        // state abbr -> its breakdown, for click-through
@@ -364,7 +394,7 @@ function renderCarrierChart(id, rows) {
       datasets: [{
         data: rows.map(r => r.count),
         backgroundColor: rows.map((r, i) => carrierColor(r.label, i)),
-        borderColor: "#fff",
+        borderColor: C("--card"),           // slice gaps match the card, light or dark
         borderWidth: 2,
         hoverOffset: 8,                                  // hovered slice pops out slightly
       }],
@@ -433,7 +463,7 @@ function renderCarrierDetail(row, i){
 
 /* ===== Production by State: US choropleth (chartjs-chart-geo) + ranked-list fallback ===== */
 let _usTopo = null, _geoRegistered = false;
-const US_TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
+const US_TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json";
 const STATE_ABBR = {
   "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO",
   "Connecticut":"CT","Delaware":"DE","District of Columbia":"DC","Florida":"FL","Georgia":"GA",
@@ -944,7 +974,7 @@ async function loadBilled(){
     const money = n => "$" + Number(n || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
     const card = (label, val, note, warn) =>
       `<div class="kpi"><div class="label">${label}</div>
-       <div class="value"${warn ? ' style="color:#E2574C"' : ""}>${val}</div>
+       <div class="value"${warn ? ' style="color:var(--bad)"' : ""}>${val}</div>
        <div class="delta note">${note || ""}</div></div>`;
     // "Converted" = a billed call whose LEAD produced a policy. It is NOT the day's total
     // sales — a sale can come from a call you weren't billed for — so the label says so.
@@ -1000,10 +1030,10 @@ function renderBilledRows(){
         <td>${(r.call_date || "").replace("T", " ")}</td>
         <td>${r.vendor || ""}</td>
         <td>${r.agent || '<span class="dash">—</span>'}</td>
-        <td${/no agent|not available|timeout|after hours|drop/i.test(r.status) ? ' style="color:#E2574C;font-weight:600"' : ""}>${r.status || ""}</td>
+        <td${/no agent|not available|timeout|after hours|drop/i.test(r.status) ? ' style="color:var(--bad);font-weight:600"' : ""}>${r.status || ""}</td>
         <td class="num">${r.talk_sec ? Math.round(r.talk_sec) + "s" : '<span class="dash">—</span>'}</td>
         <td class="num">${money(r.cost)}</td>
-        <td title="${r.dialer_lead_id ? "dialer id " + r.dialer_lead_id : ""}">${r.lead_id || '<span class="dash">—</span>'}${r.converted ? ' <span title="this lead produced a policy" style="color:#00A248;font-weight:700">✓</span>' : ""}</td>
+        <td title="${r.dialer_lead_id ? "dialer id " + r.dialer_lead_id : ""}">${r.lead_id || '<span class="dash">—</span>'}${r.converted ? ' <span title="this lead produced a policy" style="color:var(--good);font-weight:700">✓</span>' : ""}</td>
       </tr>`).join("")
     : '<tr><td colspan="7" class="dash" style="padding:14px">No billed calls in this range.</td></tr>';
 }
@@ -1372,6 +1402,11 @@ $("#boardList").addEventListener("click", e => {          // click a name on the
 $("#applyRange").addEventListener("click", () => load(true));
 ["startDate","endDate"].forEach(id => $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") load(true); }));
 $("#refresh").addEventListener("click", () => { load(true); boardLoad(); });   // force a fully fresh pull
+$("#themeToggle").addEventListener("click", () => {
+  const dark = document.documentElement.getAttribute("data-theme") !== "dark";
+  try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch (e) {}
+  applyTheme(dark);
+});
 $("#autoRefresh").addEventListener("change", () => armAuto());
 $("#stateList")?.addEventListener("click", e => {   // list fallback is clickable too
   const el = e.target.closest(".st"); if (!el) return;
@@ -1497,14 +1532,14 @@ function renderTransferCheck(){
       card("Transfers", (t.transfers || 0).toLocaleString(), `${d.range.start} to ${d.range.end}`)
     + card("Paid Sales", (t.payable || 0).toLocaleString(),
            `verified new policy · ${pct(t.payable, t.transfers)} of transfers`
-           + (d.pay_once ? "" : " · paid per policy"), "#00A248")
+           + (d.pay_once ? "" : " · paid per policy"), "var(--good)")
     + card("Awaiting Verification", (t.awaiting || 0).toLocaleString(), "policy entered, not verified by a manager yet",
-           t.awaiting ? "#B7791F" : "")
-    + card("Pending", (t.pending || 0).toLocaleString(), "Sale Made, policy not entered yet", t.pending ? "#B7791F" : "")
+           t.awaiting ? "var(--amber)" : "")
+    + card("Pending", (t.pending || 0).toLocaleString(), "Sale Made, policy not entered yet", t.pending ? "var(--amber)" : "")
     + card("Later Day – Not Paid", (t.later_day || 0).toLocaleString(),
-           "sold on a later day than the transfer", t.later_day ? "#6B2FA3" : "")
+           "sold on a later day than the transfer", t.later_day ? "var(--purple)" : "")
     + card("Not Found", (t.not_found || 0).toLocaleString(), "no matching call in TLD — check by hand",
-           t.not_found ? "#E2574C" : "");
+           t.not_found ? "var(--bad)" : "");
   // Per-line recap. Sales are grouped by the carrier's line, so this can disagree with the
   // campaign split — that's the cross-sell, and it's the point of showing it.
   const lineNote = (d.by_line || []).length > 1
@@ -1515,7 +1550,7 @@ function renderTransferCheck(){
     : "";
   const fr = d.file_range || {};
   const dropNote = d.dropped
-    ? `<div style="margin-top:6px;color:#B7791F"><b>${d.dropped.toLocaleString()}</b> row${d.dropped === 1 ? "" : "s"}
+    ? `<div style="margin-top:6px;color:var(--amber)"><b>${d.dropped.toLocaleString()}</b> row${d.dropped === 1 ? "" : "s"}
        in the file fell outside ${xferEsc(d.range.start)} to ${xferEsc(d.range.end)} and were ignored
        &mdash; the file itself covers ${xferEsc(fr.start)} to ${xferEsc(fr.end)}. Those transfers belong to another pay week.</div>`
     : (fr.start && (fr.start !== d.range.start || fr.end !== d.range.end)
@@ -1530,7 +1565,7 @@ function renderTransferCheck(){
       + (k === "after" ? " &mdash; include them in next week's check" : " &mdash; make sure last week's check included them")
     : "";
   const dsNote = ds.transfers
-    ? `<div style="margin-top:6px;color:#E2574C;font-weight:600">&#9888; ${ds.transfers.toLocaleString()} of the ignored
+    ? `<div style="margin-top:6px;color:var(--bad);font-weight:600">&#9888; ${ds.transfers.toLocaleString()} of the ignored
        transfer${ds.transfers === 1 ? "" : "s"} already ${ds.transfers === 1 ? "has a sale" : "have sales"}:
        ${[dsSide("before", "before"), dsSide("after", "after")].filter(Boolean).join("; ")}.</div>`
     : "";
@@ -1570,13 +1605,13 @@ function renderXferReps(){
       <td>${xferEsc(r.rep)}</td>
       <td class="num">${n(r.transfers)}</td>
       <td class="num">${n(r.found)}</td>
-      <td class="num" style="font-weight:700;color:#00A248">${n(r.payable)}</td>
+      <td class="num" style="font-weight:700;color:var(--good)">${n(r.payable)}</td>
       <td class="num">${n(r.pol_manhattan)}</td>
       <td class="num">${n(r.pol_mapd)}</td>
       <td class="num">${n(r.awaiting)}</td>
       <td class="num">${n(r.pending)}</td>
       <td class="num">${n(r.later_day)}</td>
-      <td class="num"${r.not_found ? ' style="color:#E2574C"' : ""}>${n(r.not_found)}</td>
+      <td class="num"${r.not_found ? ' style="color:var(--bad)"' : ""}>${n(r.not_found)}</td>
     </tr>`).join("");
   const t = d.totals || {};
   $("#xferRepTotals").innerHTML = `<tr><td><b>Total</b></td><td class="num"><b>${(t.transfers||0).toLocaleString()}</b></td>

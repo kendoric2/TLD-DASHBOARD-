@@ -4,12 +4,23 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>iHealth Plans — CRM Dashboard</title>
+<script>
+  /* Night mode before anything paints, so the page never flashes white: the saved
+     choice, else the computer's own setting. The toggle is in dashboard.js. */
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem("theme"); } catch (e) {}
+    var dark = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  })();
+</script>
 <link rel="stylesheet" href="static/dashboard.css" />
 <link rel="icon" type="image/png" href="static/favicon.png" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css" />
+<link rel="stylesheet" id="flatpickrDark" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/themes/dark.min.css" disabled />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4/dist/index.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.6/build/index.umd.min.js"></script>
 </head>
 <body>
 <header>
@@ -38,6 +49,7 @@
       </span>
       <button class="btn" id="applyRange">Apply</button>
     </span>
+    <button class="btn theme-toggle" id="themeToggle" type="button" title="Night mode" aria-label="Night mode" aria-pressed="false">&#9790;</button>
     <button class="btn" id="refresh" title="Pull everything fresh from TLDCRM right now">&#8635; Refresh</button>
     <label class="auto" title="Automatically refresh the data every 30 seconds">
       <input type="checkbox" id="autoRefresh" checked />
