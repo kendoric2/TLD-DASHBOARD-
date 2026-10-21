@@ -1657,6 +1657,35 @@ $("#xferAgentFilter").addEventListener("change", e => {
   if (xferData) renderXferRows();
 });
 $("#xferClearRep").addEventListener("click", () => { xferRep = null; xferAgent = null; renderXferReps(); renderXferRows(); });
-$("#xferExport").addEventListener("click", () => {
-  if (xferData && xferData.token) window.location = `api/transfer_check/export?token=${xferData.token}`;
-});
+/* On the website the check comes back signed, and the export is built from that
+   signed result handed back (nothing is kept on the server between the two).
+   The Python version gives a token instead and keeps the run in memory. */
+async function exportTransferCheck(){
+  if (!xferData) return;
+  if (!xferData.signature){
+    if (xferData.token) window.location = `api/transfer_check/export?token=${xferData.token}`;
+    return;
+  }
+  const btn = $("#xferExport");
+  btn.disabled = true;
+  try {
+    const res = await fetch("api/transfer_check/export", {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({data: xferData}),
+    });
+    if (!res.ok){
+      const d = await res.json().catch(() => ({}));
+      $("#xferSummary").textContent = d.error || "The export failed.";
+      return;
+    }
+    const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "TransferCheck.xlsx";
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(await res.blob());
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+$("#xferExport").addEventListener("click", exportTransferCheck);
