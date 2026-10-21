@@ -419,6 +419,7 @@ function renderCarrierChart(id, rows) {
               const ds = chart.data.datasets[0];
               return chart.data.labels.map((label, i) => ({
                 text: `${label} - ${Number(ds.data[i] || 0).toLocaleString()}`,
+                fontColor: chart.options.plugins.legend.labels.color,   // without it Chart.js draws these black
                 fillStyle: ds.backgroundColor[i],
                 strokeStyle: ds.backgroundColor[i],
                 lineWidth: 0,
@@ -1249,8 +1250,9 @@ function liveDuration(sec){
   return h ? `${h}h ${m}m` : (m ? `${m}m ${s}s` : `${s}s`);
 }
 function titleCase(s){ return String(s || "").replace(/\b\w/g, c => c.toUpperCase()); }
-const LIVE_STATUS_COLOR = {INCALL: "var(--good)", DISPO: "var(--warn)", READY: "#2E7DD1",
-                           PAUSED: "var(--warn)", DEAD: "var(--bad)"};
+// Amber rather than the warning yellow: these are text, and the yellow can't be read on white
+const LIVE_STATUS_COLOR = {INCALL: "var(--good)", DISPO: "var(--amber)", READY: "#2E7DD1",
+                           PAUSED: "var(--amber)", DEAD: "var(--bad)"};
 const LIVE_STATUS_TITLE = {INCALL: "On a Call", DISPO: "Wrapping Up", READY: "Ready",
                            PAUSED: "Paused", DEAD: "Disconnected"};
 async function loadLiveAgents(){

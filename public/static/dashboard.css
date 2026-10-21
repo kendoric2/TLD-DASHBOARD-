@@ -62,6 +62,13 @@
 :root[data-theme="dark"] .xres.nosale{background:#222D40;color:#9AA8BD}
 :root[data-theme="dark"] .xres.notfound{background:#3A1A1C;color:#F5A19A}
 :root[data-theme="dark"] .xres.laterday{background:#2E2142;color:#CDB0F0}
+/* The open list of a drop-down is dark in dark mode, so its items can't stay black */
+:root[data-theme="dark"] .board-carrier option{color:var(--text);background:var(--card)}
+/* flatpickr's dark theme marks the chosen day in a pale teal that white text can't be read on */
+:root[data-theme="dark"] .flatpickr-day.selected,
+:root[data-theme="dark"] .flatpickr-day.startRange,
+:root[data-theme="dark"] .flatpickr-day.endRange,
+:root[data-theme="dark"] .flatpickr-day.selected:hover{background:var(--brand);border-color:var(--brand);color:#fff}
 
 /* The dark mode switch in the header */
 .theme-toggle{font-size:15px;line-height:1;padding:7px 10px}
