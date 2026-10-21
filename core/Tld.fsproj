@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The dashboard's logic. Pure judgment only, compiled to JavaScript by Fable
+    (npm run fable, into generated/) and used by the Node server in server/.
+    Nothing here opens a socket, reads a file, or looks at a clock, except
+    Excel.fs, which reads and writes workbooks in memory through exceljs.
+
+    Compile order is NOT alphabetical. A file may only reference what is
+    declared above it, so Include order below is the dependency order.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <!-- Nothing here is ever run as .NET, Fable reads the source directly -->
+    <OutputType>Library</OutputType>
+    <WarningLevel>5</WarningLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Tld/Rows.fs" />
+    <Compile Include="Tld/Dates.fs" />
+    <Compile Include="Tld/Queries.fs" />
+    <Compile Include="Tld/Policies.fs" />
+    <Compile Include="Tld/Cpa.fs" />
+    <Compile Include="Tld/Vendors.fs" />
+    <Compile Include="Tld/LiveAgents.fs" />
+    <Compile Include="Tld/AgentDetail.fs" />
+    <Compile Include="Tld/Csv.fs" />
+    <Compile Include="Tld/TransferCheck.fs" />
+    <Compile Include="Tld/Workbooks.fs" />
+    <Compile Include="Tld/Excel.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" Version="4.*" />
+  </ItemGroup>
+
+</Project>

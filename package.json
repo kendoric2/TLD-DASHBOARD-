@@ -1,0 +1,24 @@
+{
+  "name": "tld-dashboard",
+  "version": "2.0.0",
+  "private": true,
+  "description": "iHealth Plans TLD dashboard: sales, agents, vendors, live agents and the transfer check, live from TLD.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "imports": {
+    "#generated/*": "./generated/*",
+    "#tld/*": "./server/tld/*"
+  },
+  "scripts": {
+    "fable": "dotnet tool restore && dotnet fable core/Tld.fsproj --lang javascript -o generated",
+    "fable:watch": "dotnet tool restore && dotnet fable watch core/Tld.fsproj --lang javascript -o generated",
+    "prestart": "npm run fable",
+    "start": "node server/server.js",
+    "test": "npm run fable && node --test \"tests/**/*.test.mjs\""
+  },
+  "dependencies": {
+    "exceljs": "4.4.0"
+  }
+}

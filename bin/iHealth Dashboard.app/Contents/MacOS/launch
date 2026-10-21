@@ -3,7 +3,7 @@
 # To stop the dashboard: right-click the app's icon in the Dock and choose Quit.
 
 PROJECT="$HOME/Documents/TLDDASHBOARD"
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/local/share/dotnet:$HOME/.dotnet:/usr/bin:/bin:$PATH"
 
 if [ ! -d "$PROJECT" ]; then
   osascript -e 'display alert "iHealth Dashboard" message "Could not find the project folder at ~/Documents/TLDDASHBOARD."'
@@ -11,16 +11,22 @@ if [ ! -d "$PROJECT" ]; then
 fi
 cd "$PROJECT" || exit 1
 
-PY="$(command -v python3)"
-if [ -z "$PY" ]; then
-  osascript -e 'display alert "iHealth Dashboard" message "Python 3 was not found. Open Terminal, install Python 3, then try again."'
+if [ -z "$(command -v node)" ]; then
+  osascript -e 'display alert "iHealth Dashboard" message "Node.js was not found. Install Node.js 20 or newer from nodejs.org, then try again."'
+  exit 1
+fi
+if [ -z "$(command -v dotnet)" ]; then
+  osascript -e 'display alert "iHealth Dashboard" message "The .NET SDK was not found. Install the .NET 10 SDK from dotnet.microsoft.com, then try again."'
   exit 1
 fi
 
-# First-run dependency install (silent; does nothing if already installed).
-"$PY" -m pip install -r requirements.txt --quiet 2>/dev/null \
-  || "$PY" -m pip install -r requirements.txt --quiet --break-system-packages 2>/dev/null
+# First run only: install the packages (silent).
+[ -d node_modules ] || npm install --no-audit --no-fund --silent
 
-# Launch the dashboard. app.py opens your browser at http://localhost:5050.
+# Compile the F#, then launch. The server opens your browser at http://localhost:5050.
 # Because of 'exec', this app's process IS the server — quitting the app stops it.
-exec "$PY" src/app.py
+npm run fable --silent || {
+  osascript -e 'display alert "iHealth Dashboard" message "The dashboard could not be compiled. Run bin/start.command to see why."'
+  exit 1
+}
+exec node server/server.js

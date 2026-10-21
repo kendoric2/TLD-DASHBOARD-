@@ -16,12 +16,16 @@ logs/
 # Saved TLD rows for past ranges — derived data, rebuilt on demand
 cache/
 
-# Python
+# Node and the compiled F#
+node_modules/
+/generated/
+fable_modules/
+/core/obj/
+/core/bin/
+
+# The old Python version's virtualenv, if one is still on disk
 __pycache__/
-*.pyc
 .venv/
-venv/
-env/
 
 # OS / editor
 .DS_Store

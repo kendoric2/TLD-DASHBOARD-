@@ -4,8 +4,8 @@ A small, **read-only** web dashboard for TLDCRM / TLDialer. It pulls your sales,
 cost, and agent-performance numbers into one page so you don't have to dig through CRM
 menus. Nothing is ever written back to the CRM.
 
-Out of the box it runs in **demo mode** with sample data; add your API credentials to go
-live.
+The logic is **F#**, compiled to JavaScript by [Fable](https://fable.io) and run by a small
+Node server. The page itself (`public/`) is plain HTML, CSS and JavaScript.
 
 ## What it does
 
@@ -22,26 +22,35 @@ live.
 
 ## Quick start
 
+You need two things installed, once:
+
+- **Node.js 20 or newer** — https://nodejs.org
+- **The .NET 10 SDK** — https://dotnet.microsoft.com/download (only to compile the F#;
+  nothing runs on .NET)
+
 ```bash
 # 1. Install dependencies (first time only)
-pip install -r requirements.txt
+npm install
 
 # 2. Run it (from the project root)
-python3 src/app.py
+npm start
 ```
 
-This starts the server and opens **http://localhost:5050** in your browser. Keep the
-terminal open while you use it; press Ctrl+C to stop.
+`npm start` compiles the F# (`core/`) into `generated/`, then starts the server and opens
+**http://localhost:5050** in your browser. Keep the terminal open while you use it; press
+Ctrl+C to stop. `PORT=8000` uses another port, `NO_BROWSER=1` skips opening the browser.
 
-Prefer not to use the terminal? Double-click **`bin/start.command`** (opens a Terminal
-window) or **`bin/iHealth Dashboard.app`** (runs in the background). You'll see a
-**"SAMPLE DATA"** badge until you add credentials.
+Prefer not to use the terminal? On Windows double-click **`bin/start.cmd`**; on a Mac,
+**`bin/start.command`** (opens a Terminal window) or **`bin/iHealth Dashboard.app`** (runs
+in the background).
+
+`npm test` compiles the F# and runs the tests in `tests/`.
 
 ## Going live
 
-The app runs in demo mode until you create a **`.env`** file in the project root with your
-TLDCRM API credentials. `.env` is git-ignored, so your keys are never committed. Copy
-`.env.example` to `.env` and fill in:
+The dashboard needs a **`.env`** file in the project root with your TLDCRM API
+credentials; without one every tab says TLD is not configured. `.env` is git-ignored, so
+your keys are never committed. Copy `.env.example` to `.env` and fill in:
 
 ```
 TLD_BASE_URL=https://yourcompany.tldcrm.com   # your TLD instance URL
@@ -69,7 +78,20 @@ hammering the API. Hitting **↻ Refresh** skips even that and pulls everything 
 
 ## How it works under the hood
 
-The internals — every TLD-specific rule, the date handling, how each number is computed,
+```
+core/Tld/        F#: what to ask TLD for (Queries.fs) and what the answers mean
+                 (Policies, Cpa, Vendors, LiveAgents, AgentDetail, TransferCheck),
+                 plus the Excel exports (Workbooks.fs, Excel.fs)
+generated/       the F# compiled to JavaScript by `npm run fable` (not committed)
+server/server.js the web server: the page, its files, and the /api routes
+server/routes/   one file per /api path (vendors.billed.export.js = /api/vendors/billed/export)
+server/tld/      talking to TLD (egress.js), its rate limit, and the shared pulls
+public/          the page: index.html, static/dashboard.js, dashboard.css
+```
+
+The F# decides; the JavaScript only sends requests and hands back answers.
+
+The rest of the internals — every TLD-specific rule, the date handling, how each number is computed,
 a file-by-file map, and the gotchas we learned the hard way — live in the **blueprint**
 (kept locally in `docs/`, not committed):
 
