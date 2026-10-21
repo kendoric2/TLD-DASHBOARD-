@@ -12,7 +12,7 @@ const money2 = v => "$" + Number(v || 0).toLocaleString(undefined, {minimumFract
 
 let charts = {};          // keep chart instances so we can destroy before redraw
 
-/* Night mode. index.html sets data-theme before the page paints; this keeps the
+/* Dark mode. index.html sets data-theme before the page paints; this keeps the
    header button, the date picker and the charts in step with it. Chart text and
    lines read the page's colors, so a switch recolors the charts already drawn. */
 function applyTheme(dark){
@@ -20,7 +20,7 @@ function applyTheme(dark){
   const btn = $("#themeToggle");
   if (btn){
     btn.innerHTML = dark ? "&#9788;" : "&#9790;";
-    btn.title = dark ? "Day mode" : "Night mode";
+    btn.title = dark ? "Light mode" : "Dark mode";
     btn.setAttribute("aria-pressed", String(dark));
   }
   const fp = document.getElementById("flatpickrDark");

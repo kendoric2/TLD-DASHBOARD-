@@ -13,7 +13,7 @@
   --line:#E3E9F0;           /* borders */
   --text:#1E2A44;           /* body text */
   --muted:#6B7C93;          /* secondary text */
-  --header-bg:#182A54;      /* header, tab bar and the dark bars (stays navy at night) */
+  --header-bg:#182A54;      /* header, tab bar and the dark bars (stays navy in dark mode) */
   --amber:#B7791F;          /* "waiting" figures */
   --purple:#6B2FA3;         /* "later day" figures */
   --radius:14px;
@@ -21,7 +21,7 @@
   color-scheme:light;
 }
 
-/* Night mode. The toggle in the header sets data-theme on <html> and remembers
+/* Dark mode. The toggle in the header sets data-theme on <html> and remembers
    the choice; with no choice saved it follows the computer's own setting. */
 :root[data-theme="dark"]{
   --brand-dark:#DCE6F2;     /* headings and big numbers: light instead of navy */
@@ -63,7 +63,7 @@
 :root[data-theme="dark"] .xres.notfound{background:#3A1A1C;color:#F5A19A}
 :root[data-theme="dark"] .xres.laterday{background:#2E2142;color:#CDB0F0}
 
-/* The night mode switch in the header */
+/* The dark mode switch in the header */
 .theme-toggle{font-size:15px;line-height:1;padding:7px 10px}
 *{box-sizing:border-box}
 body{
